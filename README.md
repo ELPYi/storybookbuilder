@@ -1,13 +1,13 @@
 # Storybook Builder
 
-A Windows desktop app that turns a storybook script and images into a narrated, karaoke-style video — ready for YouTube or YouTube Shorts.
+A Windows desktop app that turns a storybook script and images into a narrated, karaoke-style video, ready for YouTube or YouTube Shorts.
 
 ## What it does
 
-1. **Write a script** — paste or import a structured `book.txt` with pages, image references, and narration lines
-2. **Arrange images** — drag-and-drop your illustrations into order
-3. **Build pages** — renders each page as a 300 DPI PNG (with optional PDF/DOCX export)
-4. **Build video** — runs AI text-to-speech (Kokoro), aligns audio with Whisper, and assembles everything with FFmpeg into a narrated video with word-level karaoke highlighting
+1. **Write a script**: paste or import a structured `book.txt` with pages, image references, and narration lines
+2. **Arrange images**: drag-and-drop your illustrations into order
+3. **Build pages**: renders each page as a 300 DPI PNG (with optional PDF/DOCX export)
+4. **Build video**: runs AI text-to-speech (Kokoro), aligns audio with Whisper, and assembles everything with FFmpeg into a narrated video with word-level karaoke highlighting
 
 ## Features
 
@@ -23,7 +23,7 @@ A Windows desktop app that turns a storybook script and images into a narrated, 
 
 - [Node.js](https://nodejs.org) 18+
 - [Python](https://www.python.org) 3.12 (installed automatically on first run if missing)
-- [FFmpeg](https://ffmpeg.org) — place `ffmpeg.exe` in the `ffmpeg-bin/` folder or install via WinGet
+- [FFmpeg](https://ffmpeg.org): place `ffmpeg.exe` in the `ffmpeg-bin/` folder or install via WinGet
 
 ## Getting started
 
@@ -65,7 +65,7 @@ Place matching images in `input/images/` (numbered filenames like `01.jpg` are s
 
 ```
 app/             Electron main + renderer process
-  main.js        Main process — IPC handlers, build runners, Python setup
+  main.js        Main process: IPC handlers, build runners, Python setup
   renderer.js    UI logic
   workers/       Worker threads for book and video builds
 scripts/
