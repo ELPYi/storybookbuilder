@@ -1,0 +1,9 @@
+node_modules/
+dist/
+output/
+input/images/
+input/book.txt
+ffmpeg-bin/
+*.log
+.DS_Store
+Thumbs.db

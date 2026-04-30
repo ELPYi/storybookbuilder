@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Storybook Builder — Setup</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #16213e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px;
+    }
+    h1 { font-size: 24px; color: #fff; margin-bottom: 6px; }
+    .sub { font-size: 13px; color: #8888aa; margin-bottom: 28px; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 4px solid #2a2a4a;
+      border-top-color: #6c7cf8;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #status {
+      font-size: 14px;
+      color: #bbb;
+      text-align: center;
+      max-width: 420px;
+      line-height: 1.6;
+      margin-bottom: 18px;
+      min-height: 44px;
+    }
+    #log {
+      width: 100%;
+      max-width: 520px;
+      height: 150px;
+      background: #0d0d1a;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: 'Consolas', monospace;
+      font-size: 11px;
+      color: #7fc77f;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    #error-msg {
+      display: none;
+      font-size: 13px;
+      color: #f08080;
+      text-align: center;
+      max-width: 420px;
+      line-height: 1.6;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Storybook Builder</h1>
+  <p class="sub">First-time setup — this only happens once</p>
+  <div class="spinner" id="spinner"></div>
+  <div id="status">Checking for required components...</div>
+  <div id="log"></div>
+  <div id="error-msg"></div>
+
+  <script>
+    const logEl    = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const spinner  = document.getElementById('spinner');
+    const errorEl  = document.getElementById('error-msg');
+
+    window.api.onSetupLog(msg => {
+      logEl.textContent += msg;
+      logEl.scrollTop = logEl.scrollHeight;
+    });
+    window.api.onSetupStatus(msg => {
+      statusEl.textContent = msg;
+    });
+    window.api.onSetupError(msg => {
+      spinner.style.display = 'none';
+      statusEl.textContent = '';
+      errorEl.style.display = 'block';
+      errorEl.innerHTML = msg;
+    });
+  </script>
+</body>
+</html>

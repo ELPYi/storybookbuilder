@@ -1,0 +1,71 @@
+{
+  "name": "storybook",
+  "version": "1.0.0",
+  "description": "Storybook Builder — turn text and images into narrated videos",
+  "main": "app/main.js",
+  "scripts": {
+    "start": "electron app/main.js",
+    "build-book": "node scripts/build-book.js",
+    "build-video": "node scripts/build-video.js",
+    "dist": "node scripts/package.js",
+    "dist-installer": "electron-builder --win",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "docx": "^9.6.1",
+    "pdf-lib": "^1.17.1",
+    "sharp": "^0.34.5",
+    "sortablejs": "^1.15.7"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.storybook.builder",
+    "productName": "Storybook Builder",
+    "asar": false,
+    "forceCodeSigning": false,
+    "files": [
+      "app/**",
+      "scripts/**",
+      "node_modules/**",
+      "!node_modules/electron-builder/**",
+      "!**/node_modules/.cache/**"
+    ],
+    "extraResources": [
+      {
+        "from": "ffmpeg-bin",
+        "to": "ffmpeg-bin",
+        "filter": [
+          "*.exe"
+        ]
+      },
+      {
+        "from": "music",
+        "to": "music",
+        "filter": [
+          "*.mp3",
+          "*.wav",
+          "*.flac",
+          "*.aac",
+          "*.ogg",
+          "*.m4a"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
+  }
+}
