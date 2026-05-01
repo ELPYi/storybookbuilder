@@ -35,8 +35,8 @@ const TEXT_COLOR_LAST  = process.env.TEXT_COLOR_LAST  || '#000000';
 const DPI    = 300;
 const PAGE_W = process.env.STORYBOOK_PAGE_W_PX ? parseInt(process.env.STORYBOOK_PAGE_W_PX) : 2550;
 const PAGE_H = process.env.STORYBOOK_PAGE_H_PX ? parseInt(process.env.STORYBOOK_PAGE_H_PX) : 2550;
-// 0.125" bleed on each side @ 300 DPI
-const BLEED    = Math.round(0.125 * DPI);
+// Bleed in inches — configurable via env, default 0.125" per side @ 300 DPI
+const BLEED    = Math.round(parseFloat(process.env.BLEED_IN || '0.125') * DPI);
 // Full canvas including bleed
 const CANVAS_W = PAGE_W + BLEED * 2;
 const CANVAS_H = PAGE_H + BLEED * 2;

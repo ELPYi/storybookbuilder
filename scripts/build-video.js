@@ -76,22 +76,32 @@ const BLEED  = Math.round(0.125 * DPI);  // 38px — always 0.125" at 300 DPI
 let PAGE_W, PAGE_H, vidW, vidH, VIDEO_SIZE, TXT_X, TXT_Y, TXT_W, TXT_H;
 
 // ─── Portrait (9:16 Shorts) constants ─────────────────────────────────────────
-const PORT_W     = 1080;
-const PORT_H     = 1920;
-const PORT_IMG_H = Math.round(PORT_H * 0.6);  // 1152 — image occupies top 60%
-const PORT_TXT_X = 0;
-const PORT_TXT_Y = PORT_IMG_H;                 // 960 — text starts at mid-point
-const PORT_TXT_W = PORT_W;                     // 1080
-const PORT_TXT_H = PORT_H - PORT_IMG_H;        // 960
+const PORT_W         = 1080;
+const PORT_H         = 1920;
+const PORT_IMG_RATIO = parseFloat(process.env.PORT_IMG_RATIO || '0.6');
+const PORT_IMG_H     = Math.round(PORT_H * PORT_IMG_RATIO);
+const PORT_TXT_X     = 0;
+const PORT_TXT_Y     = PORT_IMG_H;
+const PORT_TXT_W     = PORT_W;
+const PORT_TXT_H     = PORT_H - PORT_IMG_H;
+const PORT_FONT_COVER        = parseInt(process.env.PORT_FONT_COVER        || '90');
+const PORT_FONT_STORY        = parseInt(process.env.PORT_FONT_STORY        || '80');
+const PORT_TEXT_COLOR_COVER  = process.env.PORT_TEXT_COLOR_COVER  || '#000000';
+const PORT_TEXT_COLOR_STORY  = process.env.PORT_TEXT_COLOR_STORY  || '#000000';
 
-// Landscape (16:9) constants: left image 60%, right text 40%.
-const LAND_W     = 1920;
-const LAND_H     = 1080;
-const LAND_IMG_W = Math.round(LAND_W * 0.6);   // 1152
-const LAND_TXT_X = LAND_IMG_W;
-const LAND_TXT_Y = 0;
-const LAND_TXT_W = LAND_W - LAND_IMG_W;        // 768
-const LAND_TXT_H = LAND_H;                     // 1080
+// Landscape (16:9) constants: left image, right text.
+const LAND_W         = 1920;
+const LAND_H         = 1080;
+const LAND_IMG_RATIO = parseFloat(process.env.LAND_IMG_RATIO || '0.6');
+const LAND_IMG_W     = Math.round(LAND_W * LAND_IMG_RATIO);
+const LAND_TXT_X     = LAND_IMG_W;
+const LAND_TXT_Y     = 0;
+const LAND_TXT_W     = LAND_W - LAND_IMG_W;
+const LAND_TXT_H     = LAND_H;
+const LAND_FONT_COVER        = parseInt(process.env.LAND_FONT_COVER        || '90');
+const LAND_FONT_STORY        = parseInt(process.env.LAND_FONT_STORY        || '48');
+const LAND_TEXT_COLOR_COVER  = process.env.LAND_TEXT_COLOR_COVER  || '#000000';
+const LAND_TEXT_COLOR_STORY  = process.env.LAND_TEXT_COLOR_STORY  || '#000000';
 
 async function initDimensions(firstImgPath) {
   // Always detect from the actual PNG — settings-passed env vars may reflect a different
@@ -676,7 +686,7 @@ function buildLandscapeSvgText(text, { bold = false, startFontSize = 80, textCol
 // text rendered on a white background fills the bottom half.
 async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor = '#000000' } = {}) {
   const tmpPath = path.join(os.tmpdir(), `sb_port_frame_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const startFontSize = isCover ? 90 : 80;
+  const startFontSize = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
 
   // Top half: source image, cropped/scaled to fill PORT_W × PORT_IMG_H
   const imgBuf = await sharp(srcImgPath)
@@ -711,7 +721,7 @@ async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor
 // text rendered on a white background fills right 40%.
 async function buildLandscapeFrame(srcImgPath, text, { isCover = false, textColor = '#000000' } = {}) {
   const tmpPath = path.join(os.tmpdir(), `sb_land_frame_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const startFontSize = isCover ? 90 : 48;
+  const startFontSize = isCover ? LAND_FONT_COVER : LAND_FONT_STORY;
 
   const imgBuf = await sharp(srcImgPath)
     .resize(LAND_IMG_W, LAND_H, { fit: 'cover', position: 'centre' })
@@ -1214,9 +1224,11 @@ async function main() {
     let landFramePath = null;
     let portFramePath = null;
     if (frameImgPath) {
-      landFramePath = await buildLandscapeFrame(frameImgPath, p.text, { isCover });
+      const landTextColor = isCover ? LAND_TEXT_COLOR_COVER : LAND_TEXT_COLOR_STORY;
+      landFramePath = await buildLandscapeFrame(frameImgPath, p.text, { isCover, textColor: landTextColor });
       landFramePaths.push(landFramePath);
-      portFramePath = await buildPortraitFrame(frameImgPath, p.text, { isCover });
+      const portTextColor = isCover ? PORT_TEXT_COLOR_COVER : PORT_TEXT_COLOR_STORY;
+      portFramePath = await buildPortraitFrame(frameImgPath, p.text, { isCover, textColor: portTextColor });
       portFramePaths.push(portFramePath);
     }
 
@@ -1263,7 +1275,7 @@ async function main() {
     clips.push({ videoPath: clipFile, ttsPath: ttsFile, duration: clipDur, narrationStart });
 
     if (landFramePath) {
-      const landStartFont = Math.round((isCover ? FONT_COVER : 48) * 1.0);
+      const landStartFont = isCover ? LAND_FONT_COVER : LAND_FONT_STORY;
       const { filter: landHighlightFilter, wordFiles: landWordFiles, overlays: landOverlays } =
         await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
           bold:          isCover,
@@ -1277,7 +1289,7 @@ async function main() {
     }
 
     if (portFramePath) {
-      const portStartFont = Math.round((isCover ? FONT_COVER : 80) * 1.0);
+      const portStartFont = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
       const { filter: portHighlightFilter, wordFiles: portWordFiles, overlays: portOverlays } =
         await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
           bold:          isCover,

@@ -56,9 +56,20 @@ function defaultSettings() {
     voice: 'af_heart', ttsVolume: 1.0, musicVolume: 0.05,
     highlightColor: '#FF8800', highlightStyle: 'box',
     pageSize: { width: 8.5, height: 8.5, unit: 'in' },
+    bleedIn: 0.125,
     layout: {
       imageBox: { x: 0, y: 0, w: 1, h: 1 },
       textBox:  { x: 0.03, y: 0.61, w: 0.94, h: 0.36 },
+    },
+    landscape: {
+      imgRatio: 0.6,
+      fontCover: 90, fontStory: 48,
+      textColorCover: '#000000', textColorStory: '#000000',
+    },
+    shorts: {
+      imgRatio: 0.6,
+      fontCover: 90, fontStory: 80,
+      textColorCover: '#000000', textColorStory: '#000000',
     },
   };
 }
@@ -412,14 +423,16 @@ ipcMain.handle('build:cancel', async () => {
 
 ipcMain.handle('build:book', async (event, opts = {}) => {
   const s = loadSettings();
-  const pageSize     = opts.pageSize     || s.pageSize || defaultSettings().pageSize;
-  const layout       = opts.layout       || s.layout   || defaultSettings().layout;
+  const def = defaultSettings();
+  const pageSize     = opts.pageSize     || s.pageSize || def.pageSize;
+  const layout       = opts.layout       || s.layout   || def.layout;
   const fontSizeCover  = opts.fontSizeCover  || 90;
   const fontSizeStory  = opts.fontSizeStory  || 76;
   const fontSizeLast   = opts.fontSizeLast   || 60;
   const textColorCover = opts.textColorCover || '#000000';
   const textColorStory = opts.textColorStory || '#000000';
   const textColorLast  = opts.textColorLast  || '#000000';
+  const bleedIn        = opts.bleedIn != null ? opts.bleedIn : (s.bleedIn != null ? s.bleedIn : def.bleedIn);
 
   const { w: pagePxW, h: pagePxH } = pageSizeToPx(pageSize);
 
@@ -433,18 +446,22 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
     TEXT_COLOR_COVER:    textColorCover,
     TEXT_COLOR_STORY:    textColorStory,
     TEXT_COLOR_LAST:     textColorLast,
+    BLEED_IN:            String(bleedIn),
   });
 });
 
 ipcMain.handle('build:video', async (event, opts) => {
   const { voice, ttsVolume, musicVolume, clearCache, musicPath,
           highlightColor, highlightStyle, fontSizeCover, fontSizeStory,
-          shortsThumbnailPath } = opts;
+          shortsThumbnailPath, landscape, shorts } = opts;
 
   // Read page size + layout from saved settings so video matches the built pages
-  const s        = loadSettings();
-  const pageSize = s.pageSize || defaultSettings().pageSize;
-  const layout   = s.layout   || defaultSettings().layout;
+  const s   = loadSettings();
+  const def = defaultSettings();
+  const pageSize = s.pageSize || def.pageSize;
+  const layout   = s.layout   || def.layout;
+  const land     = landscape || s.landscape || def.landscape;
+  const port     = shorts    || s.shorts    || def.shorts;
 
   const { w: pagePxW, h: pagePxH } = pageSizeToPx(pageSize);
 
@@ -462,6 +479,16 @@ ipcMain.handle('build:video', async (event, opts) => {
     HIGHLIGHT_STYLE:     highlightStyle || 'box',
     FONT_COVER:          String(fontSizeCover || 90),
     FONT_STORY:          String(fontSizeStory || 76),
+    LAND_IMG_RATIO:      String(land.imgRatio),
+    LAND_FONT_COVER:     String(land.fontCover),
+    LAND_FONT_STORY:     String(land.fontStory),
+    LAND_TEXT_COLOR_COVER: land.textColorCover,
+    LAND_TEXT_COLOR_STORY: land.textColorStory,
+    PORT_IMG_RATIO:      String(port.imgRatio),
+    PORT_FONT_COVER:     String(port.fontCover),
+    PORT_FONT_STORY:     String(port.fontStory),
+    PORT_TEXT_COLOR_COVER: port.textColorCover,
+    PORT_TEXT_COLOR_STORY: port.textColorStory,
   });
 });
 

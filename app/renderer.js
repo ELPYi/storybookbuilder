@@ -15,6 +15,13 @@ let textColorCover = '#000000';
 let textColorStory = '#000000';
 let textColorLast  = '#000000';
 
+// Bleed (inches) — persisted in settings
+let bleedIn = 0.125;
+
+// Per-format video settings — persisted in settings
+let landscapeSettings = { imgRatio: 0.6, fontCover: 90, fontStory: 48, textColorCover: '#000000', textColorStory: '#000000' };
+let shortsSettings    = { imgRatio: 0.6, fontCover: 90, fontStory: 80, textColorCover: '#000000', textColorStory: '#000000' };
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   settings = await window.api.getSettings();
@@ -372,8 +379,11 @@ textColorLastEl.addEventListener('input', () => {
 });
 
 async function saveLayoutSettings() {
-  settings.pageSize = pageSize;
-  settings.layout   = layout;
+  settings.pageSize  = pageSize;
+  settings.layout    = layout;
+  settings.bleedIn   = bleedIn;
+  settings.landscape = landscapeSettings;
+  settings.shorts    = shortsSettings;
   await window.api.saveSettings(settings);
 }
 
@@ -384,9 +394,127 @@ function initLayoutEditor() {
     pageSizeHEl.value = pageSize.height;
     pageSizeUEl.value = pageSize.unit;
   }
+  if (settings.bleedIn != null) {
+    bleedIn = settings.bleedIn;
+    document.getElementById('page-bleed').value = bleedIn;
+  }
   if (settings.layout) layout = settings.layout;
+  if (settings.landscape) {
+    landscapeSettings = settings.landscape;
+    syncLandscapeUI();
+  }
+  if (settings.shorts) {
+    shortsSettings = settings.shorts;
+    syncShortsUI();
+  }
   applyLayoutToCanvas();
 }
+
+// ─── Layout tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.layout-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-panel-book').style.display      = tab === 'book'      ? '' : 'none';
+    document.getElementById('tab-panel-landscape').classList.toggle('visible', tab === 'landscape');
+    document.getElementById('tab-panel-shorts').classList.toggle('visible',    tab === 'shorts');
+  });
+});
+
+// Bleed input
+document.getElementById('page-bleed').addEventListener('change', () => {
+  bleedIn = parseFloat(document.getElementById('page-bleed').value) || 0.125;
+  saveLayoutSettings();
+});
+
+// ─── Landscape video settings ─────────────────────────────────────────────────
+function syncLandscapeUI() {
+  const pct = Math.round(landscapeSettings.imgRatio * 100);
+  document.getElementById('land-img-ratio').value       = pct;
+  document.getElementById('land-img-ratio-val').textContent = pct;
+  document.getElementById('land-txt-ratio-val').textContent = 100 - pct;
+  document.getElementById('land-font-cover').value          = landscapeSettings.fontCover;
+  document.getElementById('land-font-cover-val').textContent = landscapeSettings.fontCover;
+  document.getElementById('land-font-story').value          = landscapeSettings.fontStory;
+  document.getElementById('land-font-story-val').textContent = landscapeSettings.fontStory;
+  document.getElementById('land-text-color-cover').value    = landscapeSettings.textColorCover;
+  document.getElementById('land-text-color-cover-val').textContent = landscapeSettings.textColorCover.toUpperCase();
+  document.getElementById('land-text-color-story').value    = landscapeSettings.textColorStory;
+  document.getElementById('land-text-color-story-val').textContent = landscapeSettings.textColorStory.toUpperCase();
+}
+
+document.getElementById('land-img-ratio').addEventListener('input', () => {
+  const pct = parseInt(document.getElementById('land-img-ratio').value);
+  document.getElementById('land-img-ratio-val').textContent = pct;
+  document.getElementById('land-txt-ratio-val').textContent = 100 - pct;
+  landscapeSettings.imgRatio = pct / 100;
+});
+document.getElementById('land-img-ratio').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-font-cover').addEventListener('input', () => {
+  landscapeSettings.fontCover = parseInt(document.getElementById('land-font-cover').value);
+  document.getElementById('land-font-cover-val').textContent = landscapeSettings.fontCover;
+});
+document.getElementById('land-font-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-font-story').addEventListener('input', () => {
+  landscapeSettings.fontStory = parseInt(document.getElementById('land-font-story').value);
+  document.getElementById('land-font-story-val').textContent = landscapeSettings.fontStory;
+});
+document.getElementById('land-font-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-text-color-cover').addEventListener('input', () => {
+  landscapeSettings.textColorCover = document.getElementById('land-text-color-cover').value;
+  document.getElementById('land-text-color-cover-val').textContent = landscapeSettings.textColorCover.toUpperCase();
+});
+document.getElementById('land-text-color-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-text-color-story').addEventListener('input', () => {
+  landscapeSettings.textColorStory = document.getElementById('land-text-color-story').value;
+  document.getElementById('land-text-color-story-val').textContent = landscapeSettings.textColorStory.toUpperCase();
+});
+document.getElementById('land-text-color-story').addEventListener('change', saveLayoutSettings);
+
+// ─── Shorts video settings ────────────────────────────────────────────────────
+function syncShortsUI() {
+  const pct = Math.round(shortsSettings.imgRatio * 100);
+  document.getElementById('port-img-ratio').value       = pct;
+  document.getElementById('port-img-ratio-val').textContent = pct;
+  document.getElementById('port-txt-ratio-val').textContent = 100 - pct;
+  document.getElementById('port-font-cover').value          = shortsSettings.fontCover;
+  document.getElementById('port-font-cover-val').textContent = shortsSettings.fontCover;
+  document.getElementById('port-font-story').value          = shortsSettings.fontStory;
+  document.getElementById('port-font-story-val').textContent = shortsSettings.fontStory;
+  document.getElementById('port-text-color-cover').value    = shortsSettings.textColorCover;
+  document.getElementById('port-text-color-cover-val').textContent = shortsSettings.textColorCover.toUpperCase();
+  document.getElementById('port-text-color-story').value    = shortsSettings.textColorStory;
+  document.getElementById('port-text-color-story-val').textContent = shortsSettings.textColorStory.toUpperCase();
+}
+
+document.getElementById('port-img-ratio').addEventListener('input', () => {
+  const pct = parseInt(document.getElementById('port-img-ratio').value);
+  document.getElementById('port-img-ratio-val').textContent = pct;
+  document.getElementById('port-txt-ratio-val').textContent = 100 - pct;
+  shortsSettings.imgRatio = pct / 100;
+});
+document.getElementById('port-img-ratio').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-font-cover').addEventListener('input', () => {
+  shortsSettings.fontCover = parseInt(document.getElementById('port-font-cover').value);
+  document.getElementById('port-font-cover-val').textContent = shortsSettings.fontCover;
+});
+document.getElementById('port-font-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-font-story').addEventListener('input', () => {
+  shortsSettings.fontStory = parseInt(document.getElementById('port-font-story').value);
+  document.getElementById('port-font-story-val').textContent = shortsSettings.fontStory;
+});
+document.getElementById('port-font-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-text-color-cover').addEventListener('input', () => {
+  shortsSettings.textColorCover = document.getElementById('port-text-color-cover').value;
+  document.getElementById('port-text-color-cover-val').textContent = shortsSettings.textColorCover.toUpperCase();
+});
+document.getElementById('port-text-color-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-text-color-story').addEventListener('input', () => {
+  shortsSettings.textColorStory = document.getElementById('port-text-color-story').value;
+  document.getElementById('port-text-color-story-val').textContent = shortsSettings.textColorStory.toUpperCase();
+});
+document.getElementById('port-text-color-story').addEventListener('change', saveLayoutSettings);
 
 // ─── Layout Preview ───────────────────────────────────────────────────────────
 const previewImgEl = document.getElementById('layout-preview-img');
@@ -808,7 +936,7 @@ btnBook.addEventListener('click', async () => {
     });
 
     await window.api.buildBook({
-      pageSize, layout,
+      pageSize, layout, bleedIn,
       fontSizeCover, fontSizeStory, fontSizeLast,
       textColorCover, textColorStory, textColorLast,
     });
@@ -913,6 +1041,8 @@ btnVideo.addEventListener('click', async () => {
       fontSizeCover,
       fontSizeStory,
       shortsThumbnailPath:  selectedThumbnailPath,
+      landscape:            landscapeSettings,
+      shorts:               shortsSettings,
     });
     videoBar.classList.add('success');
     setProgress(videoBar, videoProgressPct, videoProgressLabel, 100, 'Done!');
