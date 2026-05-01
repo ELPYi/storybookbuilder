@@ -61,15 +61,18 @@ function defaultSettings() {
       imageBox: { x: 0, y: 0, w: 1, h: 1 },
       textBox:  { x: 0.03, y: 0.61, w: 0.94, h: 0.36 },
     },
+    textBgColor: '#ffffff',
     landscape: {
       imgRatio: 0.6,
       fontCover: 90, fontStory: 48,
       textColorCover: '#000000', textColorStory: '#000000',
+      textBgColor: '#ffffff',
     },
     shorts: {
       imgRatio: 0.6,
       fontCover: 90, fontStory: 80,
       textColorCover: '#000000', textColorStory: '#000000',
+      textBgColor: '#ffffff',
     },
   };
 }
@@ -432,7 +435,8 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
   const textColorCover = opts.textColorCover || '#000000';
   const textColorStory = opts.textColorStory || '#000000';
   const textColorLast  = opts.textColorLast  || '#000000';
-  const bleedIn        = opts.bleedIn != null ? opts.bleedIn : (s.bleedIn != null ? s.bleedIn : def.bleedIn);
+  const bleedIn        = opts.bleedIn    != null ? opts.bleedIn    : (s.bleedIn    != null ? s.bleedIn    : def.bleedIn);
+  const textBgColor    = opts.textBgColor != null ? opts.textBgColor : (s.textBgColor != null ? s.textBgColor : def.textBgColor);
 
   const { w: pagePxW, h: pagePxH } = pageSizeToPx(pageSize);
 
@@ -447,6 +451,7 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
     TEXT_COLOR_STORY:    textColorStory,
     TEXT_COLOR_LAST:     textColorLast,
     BLEED_IN:            String(bleedIn),
+    TEXT_BG_COLOR:       textBgColor,
   });
 });
 
@@ -484,11 +489,13 @@ ipcMain.handle('build:video', async (event, opts) => {
     LAND_FONT_STORY:     String(land.fontStory),
     LAND_TEXT_COLOR_COVER: land.textColorCover,
     LAND_TEXT_COLOR_STORY: land.textColorStory,
+    LAND_TEXT_BG:          land.textBgColor,
     PORT_IMG_RATIO:      String(port.imgRatio),
     PORT_FONT_COVER:     String(port.fontCover),
     PORT_FONT_STORY:     String(port.fontStory),
     PORT_TEXT_COLOR_COVER: port.textColorCover,
     PORT_TEXT_COLOR_STORY: port.textColorStory,
+    PORT_TEXT_BG:          port.textBgColor,
   });
 });
 

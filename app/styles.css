@@ -456,6 +456,58 @@ main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
   color: var(--accent);
 }
 
+/* ── Video format preview canvases ──────────────────────────────────────────── */
+.land-preview {
+  display: flex;
+  flex-direction: row;
+  width: 380px;
+  height: 214px; /* 380 × 9/16 */
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  overflow: hidden;
+  position: relative;
+}
+
+.port-preview {
+  display: flex;
+  flex-direction: column;
+  width: 180px;
+  height: 320px; /* 180 × 16/9 */
+  background: #ffffff;
+  border: 2px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  overflow: hidden;
+  position: relative;
+}
+
+.video-preview-img-area {
+  background: rgba(91, 106, 240, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.land-preview-img-area { border-right: 2px solid var(--accent); }
+.port-preview-img-area { border-bottom: 2px solid var(--accent); }
+
+.video-preview-txt-area {
+  background: rgba(46, 204, 113, 0.10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  border: 2px solid var(--accent2);
+}
+.land-preview-txt-area { border-left: none; }
+.port-preview-txt-area { border-top: none; }
+
 /* ── Page Size & Layout Editor ───────────────────────────────────────────────── */
 .size-row {
   display: flex;

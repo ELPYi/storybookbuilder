@@ -26,10 +26,11 @@ const FONT_COVER = parseInt(process.env.FONT_COVER || '90');
 const FONT_STORY = parseInt(process.env.FONT_STORY || '76');
 const FONT_LAST  = parseInt(process.env.FONT_LAST  || '60');
 
-// ─── Text colors ──────────────────────────────────────────────────────────────
+// ─── Text colors & background ─────────────────────────────────────────────────
 const TEXT_COLOR_COVER = process.env.TEXT_COLOR_COVER || '#000000';
 const TEXT_COLOR_STORY = process.env.TEXT_COLOR_STORY || '#000000';
 const TEXT_COLOR_LAST  = process.env.TEXT_COLOR_LAST  || '#000000';
+const TEXT_BG_COLOR    = process.env.TEXT_BG_COLOR    || '#ffffff';
 
 // ─── Page dimensions ──────────────────────────────────────────────────────────
 const DPI    = 300;
@@ -256,7 +257,7 @@ function safeXml(s) {
 
 // Renders text into a box of size boxW×boxH with auto-scaling font.
 function svgTextBlock(text, opts = {}) {
-  const { bold = false, startFontSize, boxW, boxH, textColor = '#000000' } = opts;
+  const { bold = false, startFontSize, boxW, boxH, textColor = '#000000', bgColor = null } = opts;
   const W = boxW;
   const H = boxH;
   const mX     = Math.round(W * 0.04);
@@ -300,6 +301,7 @@ function svgTextBlock(text, opts = {}) {
 
   return Buffer.from(`
     <svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+      ${bgColor ? `<rect width="${W}" height="${H}" fill="${bgColor}"/>` : ''}
       <text
         x="${W / 2}"
         y="${startY}"
@@ -464,7 +466,7 @@ async function buildPage(page, opts = {}) {
       : Math.round(FONT_STORY * SCALE);
 
   const textColor = isCover ? TEXT_COLOR_COVER : opts.isLast ? TEXT_COLOR_LAST : TEXT_COLOR_STORY;
-  const textSvg = svgTextBlock(page.text, { bold: isCover, startFontSize, boxW: txtW, boxH: txtH, textColor });
+  const textSvg = svgTextBlock(page.text, { bold: isCover, startFontSize, boxW: txtW, boxH: txtH, textColor, bgColor: TEXT_BG_COLOR });
   const textImg = await sharp(textSvg).png().toBuffer();
 
   const outFile = path.join(OUTPUT_PAGES_DIR, `${String(page.number).padStart(2, '0')}.png`);

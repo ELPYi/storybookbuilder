@@ -89,6 +89,7 @@ const PORT_FONT_COVER        = parseInt(process.env.PORT_FONT_COVER        || '9
 const PORT_FONT_STORY        = parseInt(process.env.PORT_FONT_STORY        || '80');
 const PORT_TEXT_COLOR_COVER  = process.env.PORT_TEXT_COLOR_COVER  || '#000000';
 const PORT_TEXT_COLOR_STORY  = process.env.PORT_TEXT_COLOR_STORY  || '#000000';
+const PORT_TEXT_BG           = process.env.PORT_TEXT_BG           || '#ffffff';
 
 // Landscape (16:9) constants: left image, right text.
 const LAND_W         = 1920;
@@ -103,6 +104,7 @@ const LAND_FONT_COVER        = parseInt(process.env.LAND_FONT_COVER        || '9
 const LAND_FONT_STORY        = parseInt(process.env.LAND_FONT_STORY        || '48');
 const LAND_TEXT_COLOR_COVER  = process.env.LAND_TEXT_COLOR_COVER  || '#000000';
 const LAND_TEXT_COLOR_STORY  = process.env.LAND_TEXT_COLOR_STORY  || '#000000';
+const LAND_TEXT_BG           = process.env.LAND_TEXT_BG           || '#ffffff';
 
 async function initDimensions(firstImgPath) {
   // Always detect from the actual PNG — settings-passed env vars may reflect a different
@@ -698,7 +700,7 @@ async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor
   // Bottom half: white background + text SVG
   const textSvg = buildPortraitSvgText(text, { bold: isCover, startFontSize, textColor });
   const textBuf = await sharp({
-    create: { width: PORT_TXT_W, height: PORT_TXT_H, channels: 4, background: '#ffffff' },
+    create: { width: PORT_TXT_W, height: PORT_TXT_H, channels: 4, background: PORT_TEXT_BG },
   })
     .composite([{ input: textSvg, top: 0, left: 0 }])
     .png()
@@ -731,7 +733,7 @@ async function buildLandscapeFrame(srcImgPath, text, { isCover = false, textColo
 
   const textSvg = buildLandscapeSvgText(text, { bold: isCover, startFontSize, textColor });
   const textBuf = await sharp({
-    create: { width: LAND_TXT_W, height: LAND_TXT_H, channels: 4, background: '#ffffff' },
+    create: { width: LAND_TXT_W, height: LAND_TXT_H, channels: 4, background: LAND_TEXT_BG },
   })
     .composite([{ input: textSvg, top: 0, left: 0 }])
     .png()

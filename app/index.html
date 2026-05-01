@@ -148,6 +148,18 @@ Image: page 2 illustration"
         </div>
       </div>
 
+      <div class="font-size-row">
+        <div>
+          <label>Text area background</label>
+          <div class="color-picker-control">
+            <input type="color" id="text-bg-color" value="#ffffff"/>
+            <span id="text-bg-color-val">#FFFFFF</span>
+          </div>
+        </div>
+        <div></div>
+        <div></div>
+      </div>
+
       <div class="layout-canvas-wrap">
         <div id="layout-canvas" class="layout-canvas">
           <div id="layout-img-box" class="layout-box layout-img-box">
@@ -215,8 +227,32 @@ Image: page 2 illustration"
             <span id="land-text-color-story-val">#000000</span>
           </div>
         </div>
-        <div></div>
+        <div>
+          <label>Text area background</label>
+          <div class="color-picker-control">
+            <input type="color" id="land-text-bg" value="#ffffff"/>
+            <span id="land-text-bg-val">#FFFFFF</span>
+          </div>
+        </div>
       </div>
+      <div class="layout-canvas-wrap">
+        <div id="land-preview" class="land-preview">
+          <div id="land-preview-img-area" class="video-preview-img-area land-preview-img-area">
+            <img id="land-preview-img" class="layout-preview-img" style="display:none"/>
+            <span class="layout-box-label" id="land-preview-img-label">Image</span>
+          </div>
+          <div id="land-preview-txt-area" class="video-preview-txt-area land-preview-txt-area">
+            <div id="land-preview-txt" class="layout-preview-txt" style="display:none"></div>
+            <span class="layout-box-label" id="land-preview-txt-label">Text</span>
+          </div>
+        </div>
+      </div>
+      <div class="preview-nav" id="land-preview-nav" style="display:none">
+        <button class="btn btn-ghost preview-nav-btn" id="land-preview-prev">&#8249; Prev</button>
+        <span id="land-preview-page-label"></span>
+        <button class="btn btn-ghost preview-nav-btn" id="land-preview-next">Next &#8250;</button>
+      </div>
+      <div class="layout-hint">Preview updates as you adjust settings</div>
     </div>
 
     <!-- ── Shorts Video tab ── -->
@@ -258,8 +294,32 @@ Image: page 2 illustration"
             <span id="port-text-color-story-val">#000000</span>
           </div>
         </div>
-        <div></div>
+        <div>
+          <label>Text area background</label>
+          <div class="color-picker-control">
+            <input type="color" id="port-text-bg" value="#ffffff"/>
+            <span id="port-text-bg-val">#FFFFFF</span>
+          </div>
+        </div>
       </div>
+      <div class="layout-canvas-wrap">
+        <div id="port-preview" class="port-preview">
+          <div id="port-preview-img-area" class="video-preview-img-area port-preview-img-area">
+            <img id="port-preview-img" class="layout-preview-img" style="display:none"/>
+            <span class="layout-box-label" id="port-preview-img-label">Image</span>
+          </div>
+          <div id="port-preview-txt-area" class="video-preview-txt-area port-preview-txt-area">
+            <div id="port-preview-txt" class="layout-preview-txt" style="display:none"></div>
+            <span class="layout-box-label" id="port-preview-txt-label">Text</span>
+          </div>
+        </div>
+      </div>
+      <div class="preview-nav" id="port-preview-nav" style="display:none">
+        <button class="btn btn-ghost preview-nav-btn" id="port-preview-prev">&#8249; Prev</button>
+        <span id="port-preview-page-label"></span>
+        <button class="btn btn-ghost preview-nav-btn" id="port-preview-next">Next &#8250;</button>
+      </div>
+      <div class="layout-hint">Preview updates as you adjust settings</div>
     </div>
 
   </div>
