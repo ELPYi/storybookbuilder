@@ -15,6 +15,16 @@ let textColorCover = '#000000';
 let textColorStory = '#000000';
 let textColorLast  = '#000000';
 
+// Bleed (inches) — persisted in settings
+let bleedIn = 0.125;
+
+// Book text area background — persisted in settings
+let textBgColor = '#ffffff';
+
+// Per-format video settings — persisted in settings
+let landscapeSettings = { imgRatio: 0.6, fontCover: 90, fontStory: 48, textColorCover: '#000000', textColorStory: '#000000', textBgColor: '#ffffff' };
+let shortsSettings    = { imgRatio: 0.6, fontCover: 90, fontStory: 80, textColorCover: '#000000', textColorStory: '#000000', textBgColor: '#ffffff' };
+
 // ─── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   settings = await window.api.getSettings();
@@ -372,8 +382,12 @@ textColorLastEl.addEventListener('input', () => {
 });
 
 async function saveLayoutSettings() {
-  settings.pageSize = pageSize;
-  settings.layout   = layout;
+  settings.pageSize    = pageSize;
+  settings.layout      = layout;
+  settings.bleedIn     = bleedIn;
+  settings.textBgColor = textBgColor;
+  settings.landscape   = landscapeSettings;
+  settings.shorts      = shortsSettings;
   await window.api.saveSettings(settings);
 }
 
@@ -384,8 +398,287 @@ function initLayoutEditor() {
     pageSizeHEl.value = pageSize.height;
     pageSizeUEl.value = pageSize.unit;
   }
+  if (settings.bleedIn != null) {
+    bleedIn = settings.bleedIn;
+    document.getElementById('page-bleed').value = bleedIn;
+  }
+  if (settings.textBgColor != null) {
+    textBgColor = settings.textBgColor;
+    document.getElementById('text-bg-color').value = textBgColor;
+    document.getElementById('text-bg-color-val').textContent = textBgColor.toUpperCase();
+  }
   if (settings.layout) layout = settings.layout;
+  if (settings.landscape) {
+    landscapeSettings = { textBgColor: '#ffffff', ...settings.landscape };
+    syncLandscapeUI();
+  }
+  if (settings.shorts) {
+    shortsSettings = { textBgColor: '#ffffff', ...settings.shorts };
+    syncShortsUI();
+  }
   applyLayoutToCanvas();
+}
+
+// ─── Layout tabs ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.layout-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-panel-book').style.display      = tab === 'book'      ? '' : 'none';
+    document.getElementById('tab-panel-landscape').classList.toggle('visible', tab === 'landscape');
+    document.getElementById('tab-panel-shorts').classList.toggle('visible',    tab === 'shorts');
+  });
+});
+
+// Bleed input
+document.getElementById('page-bleed').addEventListener('change', () => {
+  bleedIn = parseFloat(document.getElementById('page-bleed').value) || 0.125;
+  saveLayoutSettings();
+});
+
+// Book text area background
+document.getElementById('text-bg-color').addEventListener('input', () => {
+  textBgColor = document.getElementById('text-bg-color').value;
+  document.getElementById('text-bg-color-val').textContent = textBgColor.toUpperCase();
+  txtBoxEl.style.backgroundColor = textBgColor;
+});
+document.getElementById('text-bg-color').addEventListener('change', saveLayoutSettings);
+
+// ─── Landscape video settings ─────────────────────────────────────────────────
+function syncLandscapeUI() {
+  updateLandscapePreview();
+  const pct = Math.round(landscapeSettings.imgRatio * 100);
+  document.getElementById('land-img-ratio').value       = pct;
+  document.getElementById('land-img-ratio-val').textContent = pct;
+  document.getElementById('land-txt-ratio-val').textContent = 100 - pct;
+  document.getElementById('land-font-cover').value          = landscapeSettings.fontCover;
+  document.getElementById('land-font-cover-val').textContent = landscapeSettings.fontCover;
+  document.getElementById('land-font-story').value          = landscapeSettings.fontStory;
+  document.getElementById('land-font-story-val').textContent = landscapeSettings.fontStory;
+  document.getElementById('land-text-color-cover').value    = landscapeSettings.textColorCover;
+  document.getElementById('land-text-color-cover-val').textContent = landscapeSettings.textColorCover.toUpperCase();
+  document.getElementById('land-text-color-story').value    = landscapeSettings.textColorStory;
+  document.getElementById('land-text-color-story-val').textContent = landscapeSettings.textColorStory.toUpperCase();
+  document.getElementById('land-text-bg').value              = landscapeSettings.textBgColor;
+  document.getElementById('land-text-bg-val').textContent    = landscapeSettings.textBgColor.toUpperCase();
+}
+
+document.getElementById('land-img-ratio').addEventListener('input', () => {
+  const pct = parseInt(document.getElementById('land-img-ratio').value);
+  document.getElementById('land-img-ratio-val').textContent = pct;
+  document.getElementById('land-txt-ratio-val').textContent = 100 - pct;
+  landscapeSettings.imgRatio = pct / 100;
+  updateLandscapePreview();
+});
+document.getElementById('land-img-ratio').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-font-cover').addEventListener('input', () => {
+  landscapeSettings.fontCover = parseInt(document.getElementById('land-font-cover').value);
+  document.getElementById('land-font-cover-val').textContent = landscapeSettings.fontCover;
+});
+document.getElementById('land-font-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-font-story').addEventListener('input', () => {
+  landscapeSettings.fontStory = parseInt(document.getElementById('land-font-story').value);
+  document.getElementById('land-font-story-val').textContent = landscapeSettings.fontStory;
+});
+document.getElementById('land-font-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-text-color-cover').addEventListener('input', () => {
+  landscapeSettings.textColorCover = document.getElementById('land-text-color-cover').value;
+  document.getElementById('land-text-color-cover-val').textContent = landscapeSettings.textColorCover.toUpperCase();
+  updateLandscapePreview();
+});
+document.getElementById('land-text-color-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-text-color-story').addEventListener('input', () => {
+  landscapeSettings.textColorStory = document.getElementById('land-text-color-story').value;
+  document.getElementById('land-text-color-story-val').textContent = landscapeSettings.textColorStory.toUpperCase();
+  updateLandscapePreview();
+});
+document.getElementById('land-text-color-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('land-text-bg').addEventListener('input', () => {
+  landscapeSettings.textBgColor = document.getElementById('land-text-bg').value;
+  document.getElementById('land-text-bg-val').textContent = landscapeSettings.textBgColor.toUpperCase();
+  updateLandscapePreview();
+});
+document.getElementById('land-text-bg').addEventListener('change', saveLayoutSettings);
+
+// ─── Shorts video settings ────────────────────────────────────────────────────
+function syncShortsUI() {
+  updateShortsPreview();
+  const pct = Math.round(shortsSettings.imgRatio * 100);
+  document.getElementById('port-img-ratio').value       = pct;
+  document.getElementById('port-img-ratio-val').textContent = pct;
+  document.getElementById('port-txt-ratio-val').textContent = 100 - pct;
+  document.getElementById('port-font-cover').value          = shortsSettings.fontCover;
+  document.getElementById('port-font-cover-val').textContent = shortsSettings.fontCover;
+  document.getElementById('port-font-story').value          = shortsSettings.fontStory;
+  document.getElementById('port-font-story-val').textContent = shortsSettings.fontStory;
+  document.getElementById('port-text-color-cover').value    = shortsSettings.textColorCover;
+  document.getElementById('port-text-color-cover-val').textContent = shortsSettings.textColorCover.toUpperCase();
+  document.getElementById('port-text-color-story').value    = shortsSettings.textColorStory;
+  document.getElementById('port-text-color-story-val').textContent = shortsSettings.textColorStory.toUpperCase();
+  document.getElementById('port-text-bg').value              = shortsSettings.textBgColor;
+  document.getElementById('port-text-bg-val').textContent    = shortsSettings.textBgColor.toUpperCase();
+}
+
+document.getElementById('port-img-ratio').addEventListener('input', () => {
+  const pct = parseInt(document.getElementById('port-img-ratio').value);
+  document.getElementById('port-img-ratio-val').textContent = pct;
+  document.getElementById('port-txt-ratio-val').textContent = 100 - pct;
+  shortsSettings.imgRatio = pct / 100;
+  updateShortsPreview();
+});
+document.getElementById('port-img-ratio').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-font-cover').addEventListener('input', () => {
+  shortsSettings.fontCover = parseInt(document.getElementById('port-font-cover').value);
+  document.getElementById('port-font-cover-val').textContent = shortsSettings.fontCover;
+});
+document.getElementById('port-font-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-font-story').addEventListener('input', () => {
+  shortsSettings.fontStory = parseInt(document.getElementById('port-font-story').value);
+  document.getElementById('port-font-story-val').textContent = shortsSettings.fontStory;
+});
+document.getElementById('port-font-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-text-color-cover').addEventListener('input', () => {
+  shortsSettings.textColorCover = document.getElementById('port-text-color-cover').value;
+  document.getElementById('port-text-color-cover-val').textContent = shortsSettings.textColorCover.toUpperCase();
+  updateShortsPreview();
+});
+document.getElementById('port-text-color-cover').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-text-color-story').addEventListener('input', () => {
+  shortsSettings.textColorStory = document.getElementById('port-text-color-story').value;
+  document.getElementById('port-text-color-story-val').textContent = shortsSettings.textColorStory.toUpperCase();
+  updateShortsPreview();
+});
+document.getElementById('port-text-color-story').addEventListener('change', saveLayoutSettings);
+document.getElementById('port-text-bg').addEventListener('input', () => {
+  shortsSettings.textBgColor = document.getElementById('port-text-bg').value;
+  document.getElementById('port-text-bg-val').textContent = shortsSettings.textBgColor.toUpperCase();
+  updateShortsPreview();
+});
+document.getElementById('port-text-bg').addEventListener('change', saveLayoutSettings);
+
+// ─── Video format previews ────────────────────────────────────────────────────
+const LAND_PREVIEW_W = 380;
+const LAND_PREVIEW_H = 214;
+const PORT_PREVIEW_W = 180;
+const PORT_PREVIEW_H = 320;
+
+function fitVideoPreviewText(txtEl, containerW, containerH, text, fontSizePx) {
+  if (!text) return;
+  let fs = fontSizePx;
+  const minFs = 8;
+  txtEl.style.fontSize = fs + 'px';
+  while (fs > minFs && (txtEl.scrollHeight > containerH || txtEl.scrollWidth > containerW)) {
+    fs--;
+    txtEl.style.fontSize = fs + 'px';
+  }
+}
+
+function updateLandscapePreview() {
+  const imgPct = landscapeSettings.imgRatio * 100;
+  document.getElementById('land-preview-img-area').style.width = imgPct + '%';
+  document.getElementById('land-preview-txt-area').style.backgroundColor = landscapeSettings.textBgColor;
+
+  const page = parsedPages[previewPageIndex];
+  const isCover = page && page.number === 1;
+  const isLast  = page && previewPageIndex === parsedPages.length - 1;
+
+  // Image
+  const img      = document.getElementById('land-preview-img');
+  const imgLabel = document.getElementById('land-preview-img-label');
+  const imgIdx   = page ? page.number - 1 : 0;
+  const src      = orderedImages[imgIdx] || orderedImages[0];
+  if (src) {
+    img.src = 'file://' + src.path.replace(/\\/g, '/');
+    img.style.display = 'block';
+    imgLabel.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    imgLabel.style.display = '';
+  }
+
+  // Text
+  const txt      = document.getElementById('land-preview-txt');
+  const txtLabel = document.getElementById('land-preview-txt-label');
+  if (page && page.text) {
+    const color = isCover ? landscapeSettings.textColorCover : isLast ? landscapeSettings.textColorStory : landscapeSettings.textColorStory;
+    txt.textContent    = page.text;
+    txt.style.color    = color;
+    txt.style.fontWeight = isCover ? 'bold' : 'normal';
+    txt.style.display  = 'flex';
+    txtLabel.style.display = 'none';
+    const txtW      = LAND_PREVIEW_W * (1 - landscapeSettings.imgRatio);
+    const startFont = isCover ? landscapeSettings.fontCover : landscapeSettings.fontStory;
+    fitVideoPreviewText(txt, txtW, LAND_PREVIEW_H, page.text, Math.round(startFont * LAND_PREVIEW_W / 1920));
+  } else {
+    txt.style.display = 'none';
+    txtLabel.style.display = '';
+  }
+
+  // Nav
+  const nav = document.getElementById('land-preview-nav');
+  if (parsedPages.length > 1) {
+    nav.style.display = 'flex';
+    document.getElementById('land-preview-page-label').textContent =
+      page ? `Page ${page.number}  (${previewPageIndex + 1} / ${parsedPages.length})` : '';
+    document.getElementById('land-preview-prev').disabled = previewPageIndex === 0;
+    document.getElementById('land-preview-next').disabled = previewPageIndex === parsedPages.length - 1;
+  } else {
+    nav.style.display = parsedPages.length === 1 ? 'flex' : 'none';
+    if (parsedPages.length === 1 && page) document.getElementById('land-preview-page-label').textContent = `Page ${page.number}`;
+  }
+}
+
+function updateShortsPreview() {
+  document.getElementById('port-preview-img-area').style.height = (shortsSettings.imgRatio * 100) + '%';
+  document.getElementById('port-preview-txt-area').style.backgroundColor = shortsSettings.textBgColor;
+
+  const page = parsedPages[previewPageIndex];
+  const isCover = page && page.number === 1;
+
+  // Image
+  const img      = document.getElementById('port-preview-img');
+  const imgLabel = document.getElementById('port-preview-img-label');
+  const imgIdx   = page ? page.number - 1 : 0;
+  const src      = orderedImages[imgIdx] || orderedImages[0];
+  if (src) {
+    img.src = 'file://' + src.path.replace(/\\/g, '/');
+    img.style.display = 'block';
+    imgLabel.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    imgLabel.style.display = '';
+  }
+
+  // Text
+  const txt      = document.getElementById('port-preview-txt');
+  const txtLabel = document.getElementById('port-preview-txt-label');
+  if (page && page.text) {
+    txt.textContent    = page.text;
+    txt.style.color    = isCover ? shortsSettings.textColorCover : shortsSettings.textColorStory;
+    txt.style.fontWeight = isCover ? 'bold' : 'normal';
+    txt.style.display  = 'flex';
+    txtLabel.style.display = 'none';
+    const txtH      = PORT_PREVIEW_H * (1 - shortsSettings.imgRatio);
+    const startFont = isCover ? shortsSettings.fontCover : shortsSettings.fontStory;
+    fitVideoPreviewText(txt, PORT_PREVIEW_W, txtH, page.text, Math.round(startFont * PORT_PREVIEW_W / 1080));
+  } else {
+    txt.style.display = 'none';
+    txtLabel.style.display = '';
+  }
+
+  // Nav
+  const nav = document.getElementById('port-preview-nav');
+  if (parsedPages.length > 1) {
+    nav.style.display = 'flex';
+    document.getElementById('port-preview-page-label').textContent =
+      page ? `Page ${page.number}  (${previewPageIndex + 1} / ${parsedPages.length})` : '';
+    document.getElementById('port-preview-prev').disabled = previewPageIndex === 0;
+    document.getElementById('port-preview-next').disabled = previewPageIndex === parsedPages.length - 1;
+  } else {
+    nav.style.display = parsedPages.length === 1 ? 'flex' : 'none';
+    if (parsedPages.length === 1 && page) document.getElementById('port-preview-page-label').textContent = `Page ${page.number}`;
+  }
 }
 
 // ─── Layout Preview ───────────────────────────────────────────────────────────
@@ -463,6 +756,8 @@ function fitTextPreview(isCover = false, isLast = false) {
 
 function showPreviewPage(idx) {
   previewPageIndex = Math.max(0, Math.min(parsedPages.length - 1, idx));
+  updateLandscapePreview();
+  updateShortsPreview();
   const page = parsedPages[previewPageIndex];
   if (!page) return;
 
@@ -481,6 +776,7 @@ function showPreviewPage(idx) {
   // Text: match output — bold on page 1 (cover), per-category color
   const isCover = page.number === 1;
   const isLast  = previewPageIndex === parsedPages.length - 1;
+  txtBoxEl.style.backgroundColor = textBgColor;
   if (page.text) {
     previewTxtEl.textContent       = page.text;
     previewTxtEl.style.display     = 'flex';
@@ -508,6 +804,8 @@ function showPreviewPage(idx) {
 }
 
 function updateImagePreview() {
+  updateLandscapePreview();
+  updateShortsPreview();
   if (parsedPages.length > 0) {
     showPreviewPage(previewPageIndex);
   } else if (orderedImages.length > 0) {
@@ -524,6 +822,8 @@ function updateTextPreview() {
   const content = bookTextarea.value;
   parsedPages = content.trim() ? parseAllPages(content) : [];
   previewPageIndex = Math.min(previewPageIndex, Math.max(0, parsedPages.length - 1));
+  updateLandscapePreview();
+  updateShortsPreview();
 
   if (parsedPages.length > 0) {
     showPreviewPage(previewPageIndex);
@@ -538,6 +838,11 @@ function updateTextPreview() {
 
 prevPageBtn.addEventListener('click', () => showPreviewPage(previewPageIndex - 1));
 nextPageBtn.addEventListener('click', () => showPreviewPage(previewPageIndex + 1));
+
+document.getElementById('land-preview-prev').addEventListener('click', () => showPreviewPage(previewPageIndex - 1));
+document.getElementById('land-preview-next').addEventListener('click', () => showPreviewPage(previewPageIndex + 1));
+document.getElementById('port-preview-prev').addEventListener('click', () => showPreviewPage(previewPageIndex - 1));
+document.getElementById('port-preview-next').addEventListener('click', () => showPreviewPage(previewPageIndex + 1));
 
 // ─── Drop zones ────────────────────────────────────────────────────────────────
 function setupDropZone(el, accept, onDrop) {
@@ -808,7 +1113,7 @@ btnBook.addEventListener('click', async () => {
     });
 
     await window.api.buildBook({
-      pageSize, layout,
+      pageSize, layout, bleedIn, textBgColor,
       fontSizeCover, fontSizeStory, fontSizeLast,
       textColorCover, textColorStory, textColorLast,
     });
@@ -913,6 +1218,8 @@ btnVideo.addEventListener('click', async () => {
       fontSizeCover,
       fontSizeStory,
       shortsThumbnailPath:  selectedThumbnailPath,
+      landscape:            landscapeSettings,
+      shorts:               shortsSettings,
     });
     videoBar.classList.add('success');
     setProgress(videoBar, videoProgressPct, videoProgressLabel, 100, 'Done!');

@@ -59,7 +59,8 @@ function resolveMusicPath() {
 
 const TTS_VOLUME   = parseFloat(process.env.TTS_VOLUME   || '1.0');
 const MUSIC_VOLUME = parseFloat(process.env.MUSIC_VOLUME || '0.65');
-const MUSIC_FADE   = 5;     // seconds for fade in / fade out
+const MUSIC_FADE      = 5;     // seconds for fade in / fade out
+const MUSIC_LOOP_XFADE = 2;    // crossfade duration between music loops
 const PAGE_PAUSE   = 1.5;   // silence after each narration before next page slides in
 const STILL_SECS   = 3.0;   // display duration for non-narrated pages (title, copyright)
 const TYPEWRITER_S = 2.0;   // seconds for the text wipe-reveal animation
@@ -76,22 +77,34 @@ const BLEED  = Math.round(0.125 * DPI);  // 38px — always 0.125" at 300 DPI
 let PAGE_W, PAGE_H, vidW, vidH, VIDEO_SIZE, TXT_X, TXT_Y, TXT_W, TXT_H;
 
 // ─── Portrait (9:16 Shorts) constants ─────────────────────────────────────────
-const PORT_W     = 1080;
-const PORT_H     = 1920;
-const PORT_IMG_H = Math.round(PORT_H * 0.6);  // 1152 — image occupies top 60%
-const PORT_TXT_X = 0;
-const PORT_TXT_Y = PORT_IMG_H;                 // 960 — text starts at mid-point
-const PORT_TXT_W = PORT_W;                     // 1080
-const PORT_TXT_H = PORT_H - PORT_IMG_H;        // 960
+const PORT_W         = 1080;
+const PORT_H         = 1920;
+const PORT_IMG_RATIO = parseFloat(process.env.PORT_IMG_RATIO || '0.6');
+const PORT_IMG_H     = Math.round(PORT_H * PORT_IMG_RATIO);
+const PORT_TXT_X     = 0;
+const PORT_TXT_Y     = PORT_IMG_H;
+const PORT_TXT_W     = PORT_W;
+const PORT_TXT_H     = PORT_H - PORT_IMG_H;
+const PORT_FONT_COVER        = parseInt(process.env.PORT_FONT_COVER        || '90');
+const PORT_FONT_STORY        = parseInt(process.env.PORT_FONT_STORY        || '80');
+const PORT_TEXT_COLOR_COVER  = process.env.PORT_TEXT_COLOR_COVER  || '#000000';
+const PORT_TEXT_COLOR_STORY  = process.env.PORT_TEXT_COLOR_STORY  || '#000000';
+const PORT_TEXT_BG           = process.env.PORT_TEXT_BG           || '#ffffff';
 
-// Landscape (16:9) constants: left image 60%, right text 40%.
-const LAND_W     = 1920;
-const LAND_H     = 1080;
-const LAND_IMG_W = Math.round(LAND_W * 0.6);   // 1152
-const LAND_TXT_X = LAND_IMG_W;
-const LAND_TXT_Y = 0;
-const LAND_TXT_W = LAND_W - LAND_IMG_W;        // 768
-const LAND_TXT_H = LAND_H;                     // 1080
+// Landscape (16:9) constants: left image, right text.
+const LAND_W         = 1920;
+const LAND_H         = 1080;
+const LAND_IMG_RATIO = parseFloat(process.env.LAND_IMG_RATIO || '0.6');
+const LAND_IMG_W     = Math.round(LAND_W * LAND_IMG_RATIO);
+const LAND_TXT_X     = LAND_IMG_W;
+const LAND_TXT_Y     = 0;
+const LAND_TXT_W     = LAND_W - LAND_IMG_W;
+const LAND_TXT_H     = LAND_H;
+const LAND_FONT_COVER        = parseInt(process.env.LAND_FONT_COVER        || '90');
+const LAND_FONT_STORY        = parseInt(process.env.LAND_FONT_STORY        || '48');
+const LAND_TEXT_COLOR_COVER  = process.env.LAND_TEXT_COLOR_COVER  || '#000000';
+const LAND_TEXT_COLOR_STORY  = process.env.LAND_TEXT_COLOR_STORY  || '#000000';
+const LAND_TEXT_BG           = process.env.LAND_TEXT_BG           || '#ffffff';
 
 async function initDimensions(firstImgPath) {
   // Always detect from the actual PNG — settings-passed env vars may reflect a different
@@ -676,7 +689,7 @@ function buildLandscapeSvgText(text, { bold = false, startFontSize = 80, textCol
 // text rendered on a white background fills the bottom half.
 async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor = '#000000' } = {}) {
   const tmpPath = path.join(os.tmpdir(), `sb_port_frame_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const startFontSize = isCover ? 90 : 80;
+  const startFontSize = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
 
   // Top half: source image, cropped/scaled to fill PORT_W × PORT_IMG_H
   const imgBuf = await sharp(srcImgPath)
@@ -687,7 +700,7 @@ async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor
   // Bottom half: white background + text SVG
   const textSvg = buildPortraitSvgText(text, { bold: isCover, startFontSize, textColor });
   const textBuf = await sharp({
-    create: { width: PORT_TXT_W, height: PORT_TXT_H, channels: 4, background: '#ffffff' },
+    create: { width: PORT_TXT_W, height: PORT_TXT_H, channels: 4, background: PORT_TEXT_BG },
   })
     .composite([{ input: textSvg, top: 0, left: 0 }])
     .png()
@@ -711,7 +724,7 @@ async function buildPortraitFrame(srcImgPath, text, { isCover = false, textColor
 // text rendered on a white background fills right 40%.
 async function buildLandscapeFrame(srcImgPath, text, { isCover = false, textColor = '#000000' } = {}) {
   const tmpPath = path.join(os.tmpdir(), `sb_land_frame_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const startFontSize = isCover ? 90 : 48;
+  const startFontSize = isCover ? LAND_FONT_COVER : LAND_FONT_STORY;
 
   const imgBuf = await sharp(srcImgPath)
     .resize(LAND_IMG_W, LAND_H, { fit: 'cover', position: 'centre' })
@@ -720,7 +733,7 @@ async function buildLandscapeFrame(srcImgPath, text, { isCover = false, textColo
 
   const textSvg = buildLandscapeSvgText(text, { bold: isCover, startFontSize, textColor });
   const textBuf = await sharp({
-    create: { width: LAND_TXT_W, height: LAND_TXT_H, channels: 4, background: '#ffffff' },
+    create: { width: LAND_TXT_W, height: LAND_TXT_H, channels: 4, background: LAND_TEXT_BG },
   })
     .composite([{ input: textSvg, top: 0, left: 0 }])
     .png()
@@ -917,6 +930,47 @@ async function buildClip(imgPath, duration, hasTypewriter, outPath, highlightFil
   }
 }
 
+// ─── Music loop builder ────────────────────────────────────────────────────────
+/**
+ * If the music track is shorter than targetDuration, concatenates enough copies
+ * with a short crossfade at each join to fill the video.
+ * Returns { path, isTemp } — caller must delete path if isTemp is true.
+ */
+async function buildLoopedMusicTrack(musicPath, targetDuration) {
+  const musicDur = await getMediaDuration(musicPath);
+  if (musicDur >= targetDuration) return { path: musicPath, isTemp: false };
+
+  // Clamp crossfade to at most 25% of the track length so it never eats the whole clip
+  const xfade = Math.min(MUSIC_LOOP_XFADE, musicDur * 0.25);
+  const effectiveDur = musicDur - xfade;
+  const loopCount = Math.ceil((targetDuration - xfade) / effectiveDur);
+
+  console.log(`Music (${musicDur.toFixed(1)}s) shorter than video (${targetDuration.toFixed(1)}s) — looping ×${loopCount} with ${xfade}s crossfade`);
+
+  const outPath = path.join(os.tmpdir(), `sb_music_looped_${Date.now()}.aac`);
+  const inputs = [];
+  for (let i = 0; i < loopCount; i++) inputs.push('-i', musicPath);
+
+  const filterParts = [];
+  let prev = '[0:a]';
+  for (let i = 1; i < loopCount; i++) {
+    const label = i === loopCount - 1 ? '[cfinal]' : `[cf${i}]`;
+    filterParts.push(`${prev}[${i}:a]acrossfade=d=${xfade}:c1=tri:c2=tri${label}`);
+    prev = label;
+  }
+  filterParts.push(`[cfinal]atrim=end=${targetDuration.toFixed(3)},asetpts=PTS-STARTPTS[aout]`);
+
+  await ffmpeg(
+    ...inputs,
+    '-filter_complex', filterParts.join(';'),
+    '-map', '[aout]',
+    '-c:a', 'aac', '-b:a', '192k',
+    outPath
+  );
+
+  return { path: outPath, isTemp: true };
+}
+
 // ─── Final assembly ────────────────────────────────────────────────────────────
 /**
  * Assembles all clips into a final video with:
@@ -1009,26 +1063,32 @@ async function buildFinalVideo(clips, musicPath, outPath) {
   fs.unlinkSync(tmpVideo);
   fs.unlinkSync(tmpAudio);
 
-  // ── Step 4: mix in background music ──
-  // The last narration always ends at totalDuration - (STILL_SECS + PAGE_PAUSE - TRANSITION_S).
-  // Start the music fade exactly there so it never overlaps a spoken word.
+  // ── Step 4: mix in background music (loops if shorter than video) ──
   const lastNarrationEnd = totalDuration - STILL_SECS - PAGE_PAUSE + TRANSITION_S;
   const fadeOutStart = Math.max(0, lastNarrationEnd);
   const fadeDur      = Math.max(1, totalDuration - fadeOutStart);
-  const outPathTmp = outPath.replace('.mp4', '_tmp.mp4');
-  await ffmpeg(
-    '-i', tmpCombined,
-    '-i', musicPath,
-    '-filter_complex',
-      `[1:a]volume=${MUSIC_VOLUME},` +
-      `afade=t=in:st=0:d=${MUSIC_FADE},` +
-      `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
-      `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
-      `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
-    '-map', '0:v', '-map', '[aout]',
-    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-    outPathTmp
-  );
+  const outPathTmp   = outPath.replace('.mp4', '_tmp.mp4');
+
+  const { path: loopedMusicPath, isTemp: musicIsTemp } =
+    await buildLoopedMusicTrack(musicPath, totalDuration);
+
+  try {
+    await ffmpeg(
+      '-i', tmpCombined,
+      '-i', loopedMusicPath,
+      '-filter_complex',
+        `[1:a]volume=${MUSIC_VOLUME},` +
+        `afade=t=in:st=0:d=${MUSIC_FADE},` +
+        `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
+        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
+      '-map', '0:v', '-map', '[aout]',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      outPathTmp
+    );
+  } finally {
+    if (musicIsTemp) try { fs.unlinkSync(loopedMusicPath); } catch {}
+  }
   fs.unlinkSync(tmpCombined);
   if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
   fs.renameSync(outPathTmp, outPath);
@@ -1214,9 +1274,11 @@ async function main() {
     let landFramePath = null;
     let portFramePath = null;
     if (frameImgPath) {
-      landFramePath = await buildLandscapeFrame(frameImgPath, p.text, { isCover });
+      const landTextColor = isCover ? LAND_TEXT_COLOR_COVER : LAND_TEXT_COLOR_STORY;
+      landFramePath = await buildLandscapeFrame(frameImgPath, p.text, { isCover, textColor: landTextColor });
       landFramePaths.push(landFramePath);
-      portFramePath = await buildPortraitFrame(frameImgPath, p.text, { isCover });
+      const portTextColor = isCover ? PORT_TEXT_COLOR_COVER : PORT_TEXT_COLOR_STORY;
+      portFramePath = await buildPortraitFrame(frameImgPath, p.text, { isCover, textColor: portTextColor });
       portFramePaths.push(portFramePath);
     }
 
@@ -1263,7 +1325,7 @@ async function main() {
     clips.push({ videoPath: clipFile, ttsPath: ttsFile, duration: clipDur, narrationStart });
 
     if (landFramePath) {
-      const landStartFont = Math.round((isCover ? FONT_COVER : 48) * 1.0);
+      const landStartFont = isCover ? LAND_FONT_COVER : LAND_FONT_STORY;
       const { filter: landHighlightFilter, wordFiles: landWordFiles, overlays: landOverlays } =
         await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
           bold:          isCover,
@@ -1277,7 +1339,7 @@ async function main() {
     }
 
     if (portFramePath) {
-      const portStartFont = Math.round((isCover ? FONT_COVER : 80) * 1.0);
+      const portStartFont = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
       const { filter: portHighlightFilter, wordFiles: portWordFiles, overlays: portOverlays } =
         await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
           bold:          isCover,
