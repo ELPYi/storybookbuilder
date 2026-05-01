@@ -78,7 +78,7 @@ let PAGE_W, PAGE_H, vidW, vidH, VIDEO_SIZE, TXT_X, TXT_Y, TXT_W, TXT_H;
 // ─── Portrait (9:16 Shorts) constants ─────────────────────────────────────────
 const PORT_W     = 1080;
 const PORT_H     = 1920;
-const PORT_IMG_H = Math.round(PORT_H * 0.5);  // 960 — image occupies top half
+const PORT_IMG_H = Math.round(PORT_H * 0.6);  // 1152 — image occupies top 60%
 const PORT_TXT_X = 0;
 const PORT_TXT_Y = PORT_IMG_H;                 // 960 — text starts at mid-point
 const PORT_TXT_W = PORT_W;                     // 1080
