@@ -59,7 +59,8 @@ function resolveMusicPath() {
 
 const TTS_VOLUME   = parseFloat(process.env.TTS_VOLUME   || '1.0');
 const MUSIC_VOLUME = parseFloat(process.env.MUSIC_VOLUME || '0.65');
-const MUSIC_FADE   = 5;     // seconds for fade in / fade out
+const MUSIC_FADE      = 5;     // seconds for fade in / fade out
+const MUSIC_LOOP_XFADE = 2;    // crossfade duration between music loops
 const PAGE_PAUSE   = 1.5;   // silence after each narration before next page slides in
 const STILL_SECS   = 3.0;   // display duration for non-narrated pages (title, copyright)
 const TYPEWRITER_S = 2.0;   // seconds for the text wipe-reveal animation
@@ -927,6 +928,47 @@ async function buildClip(imgPath, duration, hasTypewriter, outPath, highlightFil
   }
 }
 
+// ─── Music loop builder ────────────────────────────────────────────────────────
+/**
+ * If the music track is shorter than targetDuration, concatenates enough copies
+ * with a short crossfade at each join to fill the video.
+ * Returns { path, isTemp } — caller must delete path if isTemp is true.
+ */
+async function buildLoopedMusicTrack(musicPath, targetDuration) {
+  const musicDur = await getMediaDuration(musicPath);
+  if (musicDur >= targetDuration) return { path: musicPath, isTemp: false };
+
+  // Clamp crossfade to at most 25% of the track length so it never eats the whole clip
+  const xfade = Math.min(MUSIC_LOOP_XFADE, musicDur * 0.25);
+  const effectiveDur = musicDur - xfade;
+  const loopCount = Math.ceil((targetDuration - xfade) / effectiveDur);
+
+  console.log(`Music (${musicDur.toFixed(1)}s) shorter than video (${targetDuration.toFixed(1)}s) — looping ×${loopCount} with ${xfade}s crossfade`);
+
+  const outPath = path.join(os.tmpdir(), `sb_music_looped_${Date.now()}.aac`);
+  const inputs = [];
+  for (let i = 0; i < loopCount; i++) inputs.push('-i', musicPath);
+
+  const filterParts = [];
+  let prev = '[0:a]';
+  for (let i = 1; i < loopCount; i++) {
+    const label = i === loopCount - 1 ? '[cfinal]' : `[cf${i}]`;
+    filterParts.push(`${prev}[${i}:a]acrossfade=d=${xfade}:c1=tri:c2=tri${label}`);
+    prev = label;
+  }
+  filterParts.push(`[cfinal]atrim=end=${targetDuration.toFixed(3)},asetpts=PTS-STARTPTS[aout]`);
+
+  await ffmpeg(
+    ...inputs,
+    '-filter_complex', filterParts.join(';'),
+    '-map', '[aout]',
+    '-c:a', 'aac', '-b:a', '192k',
+    outPath
+  );
+
+  return { path: outPath, isTemp: true };
+}
+
 // ─── Final assembly ────────────────────────────────────────────────────────────
 /**
  * Assembles all clips into a final video with:
@@ -1019,26 +1061,32 @@ async function buildFinalVideo(clips, musicPath, outPath) {
   fs.unlinkSync(tmpVideo);
   fs.unlinkSync(tmpAudio);
 
-  // ── Step 4: mix in background music ──
-  // The last narration always ends at totalDuration - (STILL_SECS + PAGE_PAUSE - TRANSITION_S).
-  // Start the music fade exactly there so it never overlaps a spoken word.
+  // ── Step 4: mix in background music (loops if shorter than video) ──
   const lastNarrationEnd = totalDuration - STILL_SECS - PAGE_PAUSE + TRANSITION_S;
   const fadeOutStart = Math.max(0, lastNarrationEnd);
   const fadeDur      = Math.max(1, totalDuration - fadeOutStart);
-  const outPathTmp = outPath.replace('.mp4', '_tmp.mp4');
-  await ffmpeg(
-    '-i', tmpCombined,
-    '-i', musicPath,
-    '-filter_complex',
-      `[1:a]volume=${MUSIC_VOLUME},` +
-      `afade=t=in:st=0:d=${MUSIC_FADE},` +
-      `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
-      `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
-      `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
-    '-map', '0:v', '-map', '[aout]',
-    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
-    outPathTmp
-  );
+  const outPathTmp   = outPath.replace('.mp4', '_tmp.mp4');
+
+  const { path: loopedMusicPath, isTemp: musicIsTemp } =
+    await buildLoopedMusicTrack(musicPath, totalDuration);
+
+  try {
+    await ffmpeg(
+      '-i', tmpCombined,
+      '-i', loopedMusicPath,
+      '-filter_complex',
+        `[1:a]volume=${MUSIC_VOLUME},` +
+        `afade=t=in:st=0:d=${MUSIC_FADE},` +
+        `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
+        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
+        `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
+      '-map', '0:v', '-map', '[aout]',
+      '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
+      outPathTmp
+    );
+  } finally {
+    if (musicIsTemp) try { fs.unlinkSync(loopedMusicPath); } catch {}
+  }
   fs.unlinkSync(tmpCombined);
   if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
   fs.renameSync(outPathTmp, outPath);
