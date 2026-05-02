@@ -1076,7 +1076,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
     });
     const mixLabels = narrated.map((_, idx) => `[a${idx}]`).join('');
     audioFilters.push(
-      `${mixLabels}amix=inputs=${narrated.length}:duration=longest:dropout_transition=0[aout]`
+      `${mixLabels}amix=inputs=${narrated.length}:duration=longest:dropout_transition=0:normalize=0[aout]`
     );
 
     await ffmpeg(
