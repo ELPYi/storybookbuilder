@@ -1171,6 +1171,13 @@ btnSelectThumbnail.addEventListener('click', async () => {
   }
 });
 
+// Intro volume slider
+const introMusicVolEl    = document.getElementById('intro-music-vol');
+const introMusicVolValEl = document.getElementById('intro-music-vol-val');
+introMusicVolEl.addEventListener('input', () => {
+  introMusicVolValEl.textContent = Number(introMusicVolEl.value).toFixed(2);
+});
+
 // Intro song picker
 document.getElementById('btn-select-intro-music').addEventListener('click', async () => {
   const result = await window.api.openFile([
@@ -1232,8 +1239,9 @@ btnVideo.addEventListener('click', async () => {
       shortsThumbnailPath:  selectedThumbnailPath,
       landscape:            landscapeSettings,
       shorts:               shortsSettings,
-      introMusicPath:       selectedIntroMusicPath,
+      introMusicPath:        selectedIntroMusicPath,
       introDurationOverride: isFinite(introDurRaw) && introDurRaw > 0 ? introDurRaw : 0,
+      introMusicVolume:      parseFloat(introMusicVolEl.value),
     });
     videoBar.classList.add('success');
     setProgress(videoBar, videoProgressPct, videoProgressLabel, 100, 'Done!');

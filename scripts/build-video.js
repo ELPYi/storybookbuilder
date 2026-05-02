@@ -69,7 +69,8 @@ const THUMBNAIL_SECS = 2.0; // duration of the thumbnail frame appended to the 9
 
 const SHORTS_THUMBNAIL_PATH    = process.env.SHORTS_THUMBNAIL_PATH    || '';
 const INTRO_MUSIC_PATH         = process.env.INTRO_MUSIC_PATH         || '';
-const INTRO_DURATION_OVERRIDE  = parseFloat(process.env.INTRO_DURATION_OVERRIDE || '0') || 0;
+const INTRO_DURATION_OVERRIDE  = parseFloat(process.env.INTRO_DURATION_OVERRIDE  || '0') || 0;
+const INTRO_MUSIC_VOLUME       = parseFloat(process.env.INTRO_MUSIC_VOLUME       || String(MUSIC_VOLUME));
 
 // ─── Page dimensions (from book build settings) ────────────────────────────────
 const DPI    = 300;
@@ -870,7 +871,7 @@ async function buildLandscapeClip(landFramePath, duration, hasTypewriter, outPat
 
 // ─── Landscape intro segment builder ──────────────────────────────────────────
 // Builds a landscape intro MP4 (static title frame + intro song audio, no narration).
-async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPath) {
+async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPath, volume = INTRO_MUSIC_VOLUME) {
   const { path: loopedPath, isTemp } = await buildLoopedMusicTrack(introMusicPath, duration);
   try {
     await ffmpeg(
@@ -878,7 +879,7 @@ async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPa
       '-i', loopedPath,
       '-filter_complex',
         `[0:v]scale=${LAND_W}:${LAND_H}[vout];` +
-        `[1:a]atrim=end=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${MUSIC_VOLUME}[aout]`,
+        `[1:a]atrim=end=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${volume}[aout]`,
       '-map', '[vout]', '-map', '[aout]',
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
