@@ -71,6 +71,8 @@ const SHORTS_THUMBNAIL_PATH    = process.env.SHORTS_THUMBNAIL_PATH    || '';
 const INTRO_MUSIC_PATH         = process.env.INTRO_MUSIC_PATH         || '';
 const INTRO_DURATION_OVERRIDE  = parseFloat(process.env.INTRO_DURATION_OVERRIDE  || '0') || 0;
 const INTRO_MUSIC_VOLUME       = parseFloat(process.env.INTRO_MUSIC_VOLUME       || String(MUSIC_VOLUME));
+const INTRO_IMAGE_PATH         = process.env.INTRO_IMAGE_PATH         || '';
+const INTRO_SHOW_TEXT          = process.env.INTRO_SHOW_TEXT          === '1';
 
 // ─── Page dimensions (from book build settings) ────────────────────────────────
 const DPI    = 300;
@@ -879,7 +881,8 @@ async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPa
       '-i', loopedPath,
       '-filter_complex',
         `[0:v]scale=${LAND_W}:${LAND_H}[vout];` +
-        `[1:a]atrim=end=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${volume}[aout]`,
+        `[1:a]atrim=end=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${volume},` +
+        `afade=t=out:st=${Math.max(0, duration - 2).toFixed(3)}:d=2[aout]`,
       '-map', '[vout]', '-map', '[aout]',
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
@@ -892,16 +895,30 @@ async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPa
 }
 
 // Concatenates two MP4 files using the FFmpeg concat filter (re-encodes for compatibility).
+// Normalizes both audio streams to 44100 Hz stereo before concat to handle mismatches
+// (e.g. intro at 44100 Hz stereo vs main video at 24000 Hz mono from TTS output).
 async function concatVideos(firstPath, secondPath, outPath) {
-  await ffmpeg(
-    '-i', firstPath,
-    '-i', secondPath,
-    '-filter_complex', '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[vout][aout]',
-    '-map', '[vout]', '-map', '[aout]',
-    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '192k',
-    outPath
-  );
+  const tmpOut = outPath + '.tmp.mp4';
+  try {
+    await ffmpeg(
+      '-i', firstPath,
+      '-i', secondPath,
+      '-filter_complex',
+        '[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];' +
+        '[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];' +
+        '[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[vout][aout]',
+      '-map', '[vout]', '-map', '[aout]',
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
+      tmpOut
+    );
+    try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    fs.renameSync(tmpOut, outPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpOut); } catch {}
+    if (err.code === 'EPERM') throw new Error(`Cannot overwrite ${path.basename(outPath)} — close it in any media player and retry.`);
+    throw err;
+  }
 }
 
 // ─── Video-only clip builder ───────────────────────────────────────────────────
@@ -1127,7 +1144,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
     if (musicIsTemp) try { fs.unlinkSync(loopedMusicPath); } catch {}
   }
   fs.unlinkSync(tmpCombined);
-  if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+  try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   fs.renameSync(outPathTmp, outPath);
 }
 
@@ -1153,7 +1170,7 @@ async function appendThumbnailFrame(portraitPath, thumbnailImgPath) {
     '-c:a', 'aac', '-b:a', '192k',
     tmpPath
   );
-  if (fs.existsSync(portraitPath)) fs.unlinkSync(portraitPath);
+  try { fs.unlinkSync(portraitPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   fs.renameSync(tmpPath, portraitPath);
 }
 
@@ -1406,10 +1423,24 @@ async function main() {
     const coverPage = pages.find(p => p.number === 1);
     if (!coverPage) throw new Error('No cover page (page 1) found for intro freeze frame.');
 
-    const srcImg = findSourceImage(1, pageImageMap) || path.join(OUTPUT_PAGES_DIR, `${pad(1)}.png`);
-    const introFramePath = await buildLandscapeFrame(srcImg, coverPage.text, {
-      isCover: true, textColor: LAND_TEXT_COLOR_COVER,
-    });
+    let introFramePath;
+    const useCustomImg = INTRO_IMAGE_PATH && fs.existsSync(INTRO_IMAGE_PATH);
+    if (useCustomImg && !INTRO_SHOW_TEXT) {
+      // Custom image, no text — scale/crop to 1920×1080
+      introFramePath = path.join(os.tmpdir(), `sb_intro_frame_${Date.now()}.png`);
+      await sharp(INTRO_IMAGE_PATH)
+        .resize(LAND_W, LAND_H, { fit: 'cover', position: 'centre' })
+        .png()
+        .toFile(introFramePath);
+    } else {
+      // Auto (page 1) or custom image with text overlay
+      const srcImg = useCustomImg ? INTRO_IMAGE_PATH
+        : (findSourceImage(1, pageImageMap) || path.join(OUTPUT_PAGES_DIR, `${pad(1)}.png`));
+      introFramePath = await buildLandscapeFrame(srcImg, coverPage.text, {
+        isCover: true, textColor: LAND_TEXT_COLOR_COVER,
+      });
+    }
+
     const introSegPath  = path.join(OUTPUT_VIDEO_DIR, 'land_intro_seg.mp4');
     await buildLandscapeIntroSeg(introFramePath, INTRO_MUSIC_PATH, introDuration, introSegPath);
     try { fs.unlinkSync(introFramePath); } catch {}

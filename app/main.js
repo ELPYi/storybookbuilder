@@ -459,7 +459,8 @@ ipcMain.handle('build:video', async (event, opts) => {
   const { voice, ttsVolume, musicVolume, clearCache, musicPath,
           highlightColor, highlightStyle, fontSizeCover, fontSizeStory,
           shortsThumbnailPath, landscape, shorts,
-          introMusicPath, introDurationOverride, introMusicVolume } = opts;
+          introMusicPath, introDurationOverride, introMusicVolume,
+          introImagePath, introShowText } = opts;
 
   // Read page size + layout from saved settings so video matches the built pages
   const s   = loadSettings();
@@ -485,6 +486,8 @@ ipcMain.handle('build:video', async (event, opts) => {
     ...(introMusicPath            ? { INTRO_MUSIC_PATH:         introMusicPath                } : {}),
     ...(introDurationOverride > 0 ? { INTRO_DURATION_OVERRIDE:  String(introDurationOverride)  } : {}),
     ...(introMusicVolume != null  ? { INTRO_MUSIC_VOLUME:       String(introMusicVolume)        } : {}),
+    ...(introImagePath            ? { INTRO_IMAGE_PATH:         introImagePath                 } : {}),
+    INTRO_SHOW_TEXT: introShowText ? '1' : '0',
     HIGHLIGHT_STYLE:     highlightStyle || 'box',
     FONT_COVER:          String(fontSizeCover || 90),
     FONT_STORY:          String(fontSizeStory || 76),

@@ -791,3 +791,12 @@ main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
   color: var(--muted);
   line-height: 1.5;
 }
+.intro-show-text-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}

@@ -1148,6 +1148,7 @@ const clearCacheChk   = document.getElementById('clear-cache');
 let selectedMusicPath      = null;
 let selectedThumbnailPath  = null;
 let selectedIntroMusicPath = null;
+let selectedIntroImagePath = null;
 
 // Music file picker
 btnSelectMusic.addEventListener('click', async () => {
@@ -1186,6 +1187,22 @@ document.getElementById('btn-select-intro-music').addEventListener('click', asyn
   if (result) {
     selectedIntroMusicPath = result;
     document.getElementById('intro-music-file-name').textContent = result.split(/[\\/]/).pop();
+  }
+});
+
+// Intro image picker
+document.getElementById('btn-select-intro-image').addEventListener('click', async () => {
+  const result = await window.api.openFile([
+    { name: 'Image Files', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+  ]);
+  if (result) {
+    selectedIntroImagePath = result;
+    const nameEl  = document.getElementById('intro-image-file-name');
+    const labelEl = document.getElementById('intro-show-text-label');
+    nameEl.textContent   = result.split(/[\\/]/).pop();
+    nameEl.style.color      = '';
+    nameEl.style.fontStyle  = '';
+    labelEl.style.display   = 'flex';
   }
 });
 
@@ -1242,6 +1259,8 @@ btnVideo.addEventListener('click', async () => {
       introMusicPath:        selectedIntroMusicPath,
       introDurationOverride: isFinite(introDurRaw) && introDurRaw > 0 ? introDurRaw : 0,
       introMusicVolume:      parseFloat(introMusicVolEl.value),
+      introImagePath:        selectedIntroImagePath,
+      introShowText:         document.getElementById('intro-show-text').checked,
     });
     videoBar.classList.add('success');
     setProgress(videoBar, videoProgressPct, videoProgressLabel, 100, 'Done!');
