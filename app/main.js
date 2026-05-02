@@ -458,7 +458,8 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
 ipcMain.handle('build:video', async (event, opts) => {
   const { voice, ttsVolume, musicVolume, clearCache, musicPath,
           highlightColor, highlightStyle, fontSizeCover, fontSizeStory,
-          shortsThumbnailPath, landscape, shorts } = opts;
+          shortsThumbnailPath, landscape, shorts,
+          introMusicPath, introDurationOverride } = opts;
 
   // Read page size + layout from saved settings so video matches the built pages
   const s   = loadSettings();
@@ -478,9 +479,11 @@ ipcMain.handle('build:video', async (event, opts) => {
     STORYBOOK_PAGE_W_PX: String(pagePxW),
     STORYBOOK_PAGE_H_PX: String(pagePxH),
     STORYBOOK_LAYOUT:    JSON.stringify(layout),
-    ...(musicPath             ? { MUSIC_PATH:            musicPath             } : {}),
-    ...(highlightColor        ? { KARAOKE_COLOR:         highlightColor        } : {}),
-    ...(shortsThumbnailPath   ? { SHORTS_THUMBNAIL_PATH: shortsThumbnailPath   } : {}),
+    ...(musicPath             ? { MUSIC_PATH:              musicPath             } : {}),
+    ...(highlightColor        ? { KARAOKE_COLOR:           highlightColor        } : {}),
+    ...(shortsThumbnailPath   ? { SHORTS_THUMBNAIL_PATH:   shortsThumbnailPath   } : {}),
+    ...(introMusicPath        ? { INTRO_MUSIC_PATH:        introMusicPath        } : {}),
+    ...(introDurationOverride > 0 ? { INTRO_DURATION_OVERRIDE: String(introDurationOverride) } : {}),
     HIGHLIGHT_STYLE:     highlightStyle || 'box',
     FONT_COVER:          String(fontSizeCover || 90),
     FONT_STORY:          String(fontSizeStory || 76),

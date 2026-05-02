@@ -425,7 +425,6 @@ document.querySelectorAll('.layout-tab-btn').forEach(btn => {
     document.querySelectorAll('.layout-tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const tab = btn.dataset.tab;
-    document.getElementById('tab-panel-book').style.display      = tab === 'book'      ? '' : 'none';
     document.getElementById('tab-panel-landscape').classList.toggle('visible', tab === 'landscape');
     document.getElementById('tab-panel-shorts').classList.toggle('visible',    tab === 'shorts');
   });
@@ -1146,8 +1145,9 @@ const videoLog        = document.getElementById('video-log');
 const videoDone       = document.getElementById('video-done');
 const clearCacheChk   = document.getElementById('clear-cache');
 
-let selectedMusicPath     = null;
-let selectedThumbnailPath = null;
+let selectedMusicPath      = null;
+let selectedThumbnailPath  = null;
+let selectedIntroMusicPath = null;
 
 // Music file picker
 btnSelectMusic.addEventListener('click', async () => {
@@ -1168,6 +1168,17 @@ btnSelectThumbnail.addEventListener('click', async () => {
   if (result) {
     selectedThumbnailPath = result;
     thumbnailFileName.textContent = result.split(/[\\/]/).pop();
+  }
+});
+
+// Intro song picker
+document.getElementById('btn-select-intro-music').addEventListener('click', async () => {
+  const result = await window.api.openFile([
+    { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'] },
+  ]);
+  if (result) {
+    selectedIntroMusicPath = result;
+    document.getElementById('intro-music-file-name').textContent = result.split(/[\\/]/).pop();
   }
 });
 
@@ -1207,6 +1218,7 @@ btnVideo.addEventListener('click', async () => {
   });
 
   try {
+    const introDurRaw = parseFloat(document.getElementById('intro-duration-override').value);
     await window.api.buildVideo({
       voice:                settings.voice,
       ttsVolume:            settings.ttsVolume,
@@ -1220,6 +1232,8 @@ btnVideo.addEventListener('click', async () => {
       shortsThumbnailPath:  selectedThumbnailPath,
       landscape:            landscapeSettings,
       shorts:               shortsSettings,
+      introMusicPath:       selectedIntroMusicPath,
+      introDurationOverride: isFinite(introDurRaw) && introDurRaw > 0 ? introDurRaw : 0,
     });
     videoBar.classList.add('success');
     setProgress(videoBar, videoProgressPct, videoProgressLabel, 100, 'Done!');

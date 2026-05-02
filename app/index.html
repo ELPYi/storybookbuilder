@@ -59,137 +59,202 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Page Size & Layout ───────────────────────────────────────────────── -->
+  <!-- ── Book Builder ───────────────────────────────────────────────────────── -->
   <div class="card">
-    <div class="card-title">Page Size &amp; Layout</div>
+    <div class="card-title">Book Builder</div>
 
-    <!-- Tab bar -->
-    <div class="layout-tab-bar">
-      <button class="layout-tab-btn active" data-tab="book">Book</button>
-      <button class="layout-tab-btn" data-tab="landscape">Landscape Video</button>
+    <div class="size-row">
+      <div class="form-group">
+        <label>Width</label>
+        <input type="number" id="page-width" min="0.1" step="0.1" value="8.5"/>
+      </div>
+      <div class="form-group">
+        <label>Height</label>
+        <input type="number" id="page-height" min="0.1" step="0.1" value="8.5"/>
+      </div>
+      <div class="form-group">
+        <label>Unit</label>
+        <select id="page-unit">
+          <option value="in">inches</option>
+          <option value="cm">cm</option>
+          <option value="px">pixels</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:0 0 auto">
+        <label>Bleed (inches)</label>
+        <input type="number" id="page-bleed" min="0" max="0.5" step="0.025" value="0.125" style="width:80px"/>
+      </div>
+      <button class="btn btn-ghost" id="btn-reset-layout" style="flex-shrink:0;align-self:flex-end">Reset Layout</button>
+      <label class="snap-label" style="align-self:flex-end">
+        <input type="checkbox" id="snap-toggle" checked/>
+        Snap guides
+      </label>
+    </div>
+
+    <div class="font-size-row">
+      <div>
+        <label>Cover font size (max)</label>
+        <div class="font-size-control">
+          <input type="range" id="font-cover" min="20" max="150" step="1" value="90"/>
+          <span class="font-size-val" id="font-cover-val">90</span>
+        </div>
+      </div>
+      <div>
+        <label>Story pages font size (max)</label>
+        <div class="font-size-control">
+          <input type="range" id="font-story" min="20" max="150" step="1" value="76"/>
+          <span class="font-size-val" id="font-story-val">76</span>
+        </div>
+      </div>
+      <div>
+        <label>Last page font size (max)</label>
+        <div class="font-size-control">
+          <input type="range" id="font-last" min="20" max="150" step="1" value="60"/>
+          <span class="font-size-val" id="font-last-val">60</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="font-size-row">
+      <div>
+        <label>Cover text color</label>
+        <div class="color-picker-control">
+          <input type="color" id="text-color-cover" value="#000000"/>
+          <span id="text-color-cover-val">#000000</span>
+        </div>
+      </div>
+      <div>
+        <label>Story pages text color</label>
+        <div class="color-picker-control">
+          <input type="color" id="text-color-story" value="#000000"/>
+          <span id="text-color-story-val">#000000</span>
+        </div>
+      </div>
+      <div>
+        <label>Last page text color</label>
+        <div class="color-picker-control">
+          <input type="color" id="text-color-last" value="#000000"/>
+          <span id="text-color-last-val">#000000</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="font-size-row">
+      <div>
+        <label>Text area background</label>
+        <div class="color-picker-control">
+          <input type="color" id="text-bg-color" value="#ffffff"/>
+          <span id="text-bg-color-val">#FFFFFF</span>
+        </div>
+      </div>
+      <div></div>
+      <div></div>
+    </div>
+
+    <div class="layout-canvas-wrap">
+      <div id="layout-canvas" class="layout-canvas">
+        <div id="layout-img-box" class="layout-box layout-img-box">
+          <img id="layout-preview-img" class="layout-preview-img" style="display:none"/>
+          <span class="layout-box-label" id="layout-img-label">Image</span>
+          <div class="resize-handle" data-corner="nw"></div>
+          <div class="resize-handle" data-corner="ne"></div>
+          <div class="resize-handle" data-corner="sw"></div>
+          <div class="resize-handle" data-corner="se"></div>
+        </div>
+        <div id="layout-txt-box" class="layout-box layout-txt-box">
+          <div id="layout-preview-txt" class="layout-preview-txt" style="display:none"></div>
+          <span class="layout-box-label" id="layout-txt-label">Text</span>
+          <div class="resize-handle" data-corner="nw"></div>
+          <div class="resize-handle" data-corner="ne"></div>
+          <div class="resize-handle" data-corner="sw"></div>
+          <div class="resize-handle" data-corner="se"></div>
+        </div>
+      </div>
+    </div>
+    <div class="preview-nav" id="preview-nav" style="display:none">
+      <button class="btn btn-ghost preview-nav-btn" id="preview-prev">&#8249; Prev</button>
+      <span id="preview-page-label"></span>
+      <button class="btn btn-ghost preview-nav-btn" id="preview-next">Next &#8250;</button>
+    </div>
+    <div class="layout-hint">Drag boxes to reposition &nbsp;·&nbsp; Drag corners to resize</div>
+
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn btn-primary" id="btn-book">▶ Build Book</button>
+    </div>
+    <div class="progress-section" id="book-progress">
+      <div class="progress-header">
+        <span class="progress-label" id="book-progress-label">Building…</span>
+        <span class="progress-pct" id="book-progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="book-bar"></div>
+      </div>
+      <div class="log-box" id="book-log"></div>
+      <div class="done-row" id="book-done">
+        <button class="btn btn-ghost" id="book-open-output">📂 Open Output Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Video Builder ──────────────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">Video Builder</div>
+
+    <!-- Global video settings -->
+    <div class="inline-settings">
+      <div class="inline-settings-row">
+        <div class="form-group">
+          <label>Voice</label>
+          <select id="set-voice">
+            <option value="af_heart">af_heart — Warm American Female</option>
+            <option value="af_bella">af_bella — American Female</option>
+            <option value="af_nicole">af_nicole — American Female</option>
+            <option value="af_sarah">af_sarah — American Female</option>
+            <option value="af_sky">af_sky — American Female</option>
+            <option value="am_adam">am_adam — American Male</option>
+            <option value="am_michael">am_michael — American Male</option>
+            <option value="bf_emma">bf_emma — British Female</option>
+            <option value="bf_isabella">bf_isabella — British Female</option>
+            <option value="bm_george">bm_george — British Male</option>
+            <option value="bm_lewis">bm_lewis — British Male</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Narration Volume — <span class="slider-val" id="set-tts-vol-val">2.0</span></label>
+          <input type="range" id="set-tts-vol" min="0.5" max="4.0" step="0.1"/>
+        </div>
+        <div class="form-group">
+          <label>Music Volume — <span class="slider-val" id="set-music-vol-val">0.65</span></label>
+          <input type="range" id="set-music-vol" min="0.0" max="1.0" step="0.05"/>
+        </div>
+      </div>
+      <div class="inline-settings-row" style="margin-top:12px;grid-template-columns:1fr 1fr">
+        <div class="form-group">
+          <label>Highlight Style</label>
+          <select id="set-highlight-style">
+            <option value="box">Box (semi-transparent)</option>
+            <option value="underline">Underline</option>
+            <option value="color">Font Color Change</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Highlight Color</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+            <input type="color" id="set-highlight-color" value="#FF8800" style="width:40px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none"/>
+            <span id="set-highlight-color-val" style="font-size:12px;color:var(--muted);font-family:monospace">#FF8800</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Format tabs -->
+    <div class="layout-tab-bar" style="margin-top:16px">
+      <button class="layout-tab-btn active" data-tab="landscape">Landscape Video</button>
       <button class="layout-tab-btn" data-tab="shorts">Shorts Video</button>
     </div>
 
-    <!-- ── Book tab ── -->
-    <div id="tab-panel-book">
-      <div class="size-row">
-        <div class="form-group">
-          <label>Width</label>
-          <input type="number" id="page-width" min="0.1" step="0.1" value="8.5"/>
-        </div>
-        <div class="form-group">
-          <label>Height</label>
-          <input type="number" id="page-height" min="0.1" step="0.1" value="8.5"/>
-        </div>
-        <div class="form-group">
-          <label>Unit</label>
-          <select id="page-unit">
-            <option value="in">inches</option>
-            <option value="cm">cm</option>
-            <option value="px">pixels</option>
-          </select>
-        </div>
-        <div class="form-group" style="flex:0 0 auto">
-          <label>Bleed (inches)</label>
-          <input type="number" id="page-bleed" min="0" max="0.5" step="0.025" value="0.125" style="width:80px"/>
-        </div>
-        <button class="btn btn-ghost" id="btn-reset-layout" style="flex-shrink:0;align-self:flex-end">Reset Layout</button>
-        <label class="snap-label" style="align-self:flex-end">
-          <input type="checkbox" id="snap-toggle" checked/>
-          Snap guides
-        </label>
-      </div>
-
-      <div class="font-size-row">
-        <div>
-          <label>Cover font size (max)</label>
-          <div class="font-size-control">
-            <input type="range" id="font-cover" min="20" max="150" step="1" value="90"/>
-            <span class="font-size-val" id="font-cover-val">90</span>
-          </div>
-        </div>
-        <div>
-          <label>Story pages font size (max)</label>
-          <div class="font-size-control">
-            <input type="range" id="font-story" min="20" max="150" step="1" value="76"/>
-            <span class="font-size-val" id="font-story-val">76</span>
-          </div>
-        </div>
-        <div>
-          <label>Last page font size (max)</label>
-          <div class="font-size-control">
-            <input type="range" id="font-last" min="20" max="150" step="1" value="60"/>
-            <span class="font-size-val" id="font-last-val">60</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="font-size-row">
-        <div>
-          <label>Cover text color</label>
-          <div class="color-picker-control">
-            <input type="color" id="text-color-cover" value="#000000"/>
-            <span id="text-color-cover-val">#000000</span>
-          </div>
-        </div>
-        <div>
-          <label>Story pages text color</label>
-          <div class="color-picker-control">
-            <input type="color" id="text-color-story" value="#000000"/>
-            <span id="text-color-story-val">#000000</span>
-          </div>
-        </div>
-        <div>
-          <label>Last page text color</label>
-          <div class="color-picker-control">
-            <input type="color" id="text-color-last" value="#000000"/>
-            <span id="text-color-last-val">#000000</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="font-size-row">
-        <div>
-          <label>Text area background</label>
-          <div class="color-picker-control">
-            <input type="color" id="text-bg-color" value="#ffffff"/>
-            <span id="text-bg-color-val">#FFFFFF</span>
-          </div>
-        </div>
-        <div></div>
-        <div></div>
-      </div>
-
-      <div class="layout-canvas-wrap">
-        <div id="layout-canvas" class="layout-canvas">
-          <div id="layout-img-box" class="layout-box layout-img-box">
-            <img id="layout-preview-img" class="layout-preview-img" style="display:none"/>
-            <span class="layout-box-label" id="layout-img-label">Image</span>
-            <div class="resize-handle" data-corner="nw"></div>
-            <div class="resize-handle" data-corner="ne"></div>
-            <div class="resize-handle" data-corner="sw"></div>
-            <div class="resize-handle" data-corner="se"></div>
-          </div>
-          <div id="layout-txt-box" class="layout-box layout-txt-box">
-            <div id="layout-preview-txt" class="layout-preview-txt" style="display:none"></div>
-            <span class="layout-box-label" id="layout-txt-label">Text</span>
-            <div class="resize-handle" data-corner="nw"></div>
-            <div class="resize-handle" data-corner="ne"></div>
-            <div class="resize-handle" data-corner="sw"></div>
-            <div class="resize-handle" data-corner="se"></div>
-          </div>
-        </div>
-      </div>
-      <div class="preview-nav" id="preview-nav" style="display:none">
-        <button class="btn btn-ghost preview-nav-btn" id="preview-prev">&#8249; Prev</button>
-        <span id="preview-page-label"></span>
-        <button class="btn btn-ghost preview-nav-btn" id="preview-next">Next &#8250;</button>
-      </div>
-      <div class="layout-hint">Drag boxes to reposition &nbsp;·&nbsp; Drag corners to resize</div>
-    </div>
-
     <!-- ── Landscape Video tab ── -->
-    <div id="tab-panel-landscape" class="video-format-panel">
+    <div id="tab-panel-landscape" class="video-format-panel visible">
       <div class="split-control">
         <span class="split-label">Image / Text split</span>
         <input type="range" id="land-img-ratio" min="10" max="90" step="5" value="60"/>
@@ -253,6 +318,21 @@ Image: page 2 illustration"
         <button class="btn btn-ghost preview-nav-btn" id="land-preview-next">Next &#8250;</button>
       </div>
       <div class="layout-hint">Preview updates as you adjust settings</div>
+
+      <!-- Intro Freeze Frame -->
+      <div class="section-divider">
+        Intro Freeze Frame
+        <span class="section-badge">optional</span>
+      </div>
+      <div class="intro-controls">
+        <button class="btn btn-ghost" id="btn-select-intro-music">🎬 Select Intro Song</button>
+        <span class="music-file-name" id="intro-music-file-name"></span>
+        <div class="intro-duration-group">
+          <label for="intro-duration-override">Duration override (sec)</label>
+          <input type="number" id="intro-duration-override" min="1" step="1" placeholder="Auto from audio"/>
+        </div>
+      </div>
+      <div class="intro-hint">If an intro song is selected, the title page will freeze for its duration before the main video begins. Leave duration blank to auto-detect from the audio file.</div>
     </div>
 
     <!-- ── Shorts Video tab ── -->
@@ -322,81 +402,8 @@ Image: page 2 illustration"
       <div class="layout-hint">Preview updates as you adjust settings</div>
     </div>
 
-  </div>
-
-  <!-- ── Book Builder ───────────────────────────────────────────────────────── -->
-  <div class="card">
-    <div class="card-title">Book Builder</div>
-    <div class="action-row">
-      <button class="btn btn-primary" id="btn-book">▶ Build Book</button>
-    </div>
-    <div class="progress-section" id="book-progress">
-      <div class="progress-header">
-        <span class="progress-label" id="book-progress-label">Building…</span>
-        <span class="progress-pct" id="book-progress-pct">0%</span>
-      </div>
-      <div class="progress-bar-track">
-        <div class="progress-bar-fill" id="book-bar"></div>
-      </div>
-      <div class="log-box" id="book-log"></div>
-      <div class="done-row" id="book-done">
-        <button class="btn btn-ghost" id="book-open-output">📂 Open Output Folder</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Video Builder ──────────────────────────────────────────────────────── -->
-  <div class="card">
-    <div class="card-title">Video Builder</div>
-
-    <div class="inline-settings">
-      <div class="inline-settings-row">
-        <div class="form-group">
-          <label>Voice</label>
-          <select id="set-voice">
-            <option value="af_heart">af_heart — Warm American Female</option>
-            <option value="af_bella">af_bella — American Female</option>
-            <option value="af_nicole">af_nicole — American Female</option>
-            <option value="af_sarah">af_sarah — American Female</option>
-            <option value="af_sky">af_sky — American Female</option>
-            <option value="am_adam">am_adam — American Male</option>
-            <option value="am_michael">am_michael — American Male</option>
-            <option value="bf_emma">bf_emma — British Female</option>
-            <option value="bf_isabella">bf_isabella — British Female</option>
-            <option value="bm_george">bm_george — British Male</option>
-            <option value="bm_lewis">bm_lewis — British Male</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Narration Volume — <span class="slider-val" id="set-tts-vol-val">2.0</span></label>
-          <input type="range" id="set-tts-vol" min="0.5" max="4.0" step="0.1"/>
-        </div>
-        <div class="form-group">
-          <label>Music Volume — <span class="slider-val" id="set-music-vol-val">0.65</span></label>
-          <input type="range" id="set-music-vol" min="0.0" max="1.0" step="0.05"/>
-        </div>
-      </div>
-    </div>
-
-    <div class="inline-settings-row" style="margin-top:10px;grid-template-columns:1fr 1fr">
-      <div class="form-group">
-        <label>Highlight Style</label>
-        <select id="set-highlight-style">
-          <option value="box">Box (semi-transparent)</option>
-          <option value="underline">Underline</option>
-          <option value="color">Font Color Change</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Highlight Color</label>
-        <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
-          <input type="color" id="set-highlight-color" value="#FF8800" style="width:40px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none"/>
-          <span id="set-highlight-color-val" style="font-size:12px;color:var(--muted);font-family:monospace">#FF8800</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="action-row">
+    <!-- Build action -->
+    <div class="action-row" style="margin-top:16px">
       <button class="btn btn-success" id="btn-video">▶ Build Video</button>
       <button class="btn btn-danger" id="btn-cancel-video" style="display:none">✕ Cancel</button>
       <button class="btn btn-ghost" id="btn-select-music">🎵 Select Music</button>
@@ -428,7 +435,6 @@ Image: page 2 illustration"
   </div>
 
 </main>
-
 
 <script src="renderer.js"></script>
 </body>

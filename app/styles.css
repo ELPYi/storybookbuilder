@@ -726,3 +726,62 @@ main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
   min-width: 120px;
   text-align: center;
 }
+
+/* ── Intro freeze frame section ──────────────────────────────────────────────── */
+.section-divider {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--muted);
+  margin: 20px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-badge {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 7px;
+}
+.intro-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.intro-duration-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: auto;
+}
+.intro-duration-group label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.intro-duration-group input[type="number"] {
+  width: 140px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: var(--surface);
+  transition: border .15s;
+}
+.intro-duration-group input[type="number"]:focus { border-color: var(--accent); }
+.intro-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
