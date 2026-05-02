@@ -67,7 +67,12 @@ const TYPEWRITER_S = 2.0;   // seconds for the text wipe-reveal animation
 const TRANSITION_S = 0.5;   // xfade slide transition duration between pages
 const THUMBNAIL_SECS = 2.0; // duration of the thumbnail frame appended to the 9:16 Shorts video
 
-const SHORTS_THUMBNAIL_PATH = process.env.SHORTS_THUMBNAIL_PATH || '';
+const SHORTS_THUMBNAIL_PATH    = process.env.SHORTS_THUMBNAIL_PATH    || '';
+const INTRO_MUSIC_PATH         = process.env.INTRO_MUSIC_PATH         || '';
+const INTRO_DURATION_OVERRIDE  = parseFloat(process.env.INTRO_DURATION_OVERRIDE  || '0') || 0;
+const INTRO_MUSIC_VOLUME       = parseFloat(process.env.INTRO_MUSIC_VOLUME       || String(MUSIC_VOLUME));
+const INTRO_IMAGE_PATH         = process.env.INTRO_IMAGE_PATH         || '';
+const INTRO_SHOW_TEXT          = process.env.INTRO_SHOW_TEXT          === '1';
 
 // ─── Page dimensions (from book build settings) ────────────────────────────────
 const DPI    = 300;
@@ -866,6 +871,56 @@ async function buildLandscapeClip(landFramePath, duration, hasTypewriter, outPat
   }
 }
 
+// ─── Landscape intro segment builder ──────────────────────────────────────────
+// Builds a landscape intro MP4 (static title frame + intro song audio, no narration).
+async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPath, volume = INTRO_MUSIC_VOLUME) {
+  const { path: loopedPath, isTemp } = await buildLoopedMusicTrack(introMusicPath, duration);
+  try {
+    await ffmpeg(
+      '-loop', '1', '-i', framePath,
+      '-i', loopedPath,
+      '-filter_complex',
+        `[0:v]scale=${LAND_W}:${LAND_H}[vout];` +
+        `[1:a]atrim=end=${duration.toFixed(3)},asetpts=PTS-STARTPTS,volume=${volume},` +
+        `afade=t=out:st=${Math.max(0, duration - 2).toFixed(3)}:d=2[aout]`,
+      '-map', '[vout]', '-map', '[aout]',
+      '-t', String(duration),
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
+      outPath
+    );
+  } finally {
+    if (isTemp) try { fs.unlinkSync(loopedPath); } catch {}
+  }
+}
+
+// Concatenates two MP4 files using the FFmpeg concat filter (re-encodes for compatibility).
+// Normalizes both audio streams to 44100 Hz stereo before concat to handle mismatches
+// (e.g. intro at 44100 Hz stereo vs main video at 24000 Hz mono from TTS output).
+async function concatVideos(firstPath, secondPath, outPath) {
+  const tmpOut = outPath + '.tmp.mp4';
+  try {
+    await ffmpeg(
+      '-i', firstPath,
+      '-i', secondPath,
+      '-filter_complex',
+        '[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];' +
+        '[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];' +
+        '[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[vout][aout]',
+      '-map', '[vout]', '-map', '[aout]',
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
+      tmpOut
+    );
+    try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    fs.renameSync(tmpOut, outPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpOut); } catch {}
+    if (err.code === 'EPERM') throw new Error(`Cannot overwrite ${path.basename(outPath)} — close it in any media player and retry.`);
+    throw err;
+  }
+}
+
 // ─── Video-only clip builder ───────────────────────────────────────────────────
 // Builds a silent video clip from a still image with optional typewriter effect.
 // Audio is handled separately in the final assembly for precise sync.
@@ -1038,7 +1093,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
     });
     const mixLabels = narrated.map((_, idx) => `[a${idx}]`).join('');
     audioFilters.push(
-      `${mixLabels}amix=inputs=${narrated.length}:duration=longest:dropout_transition=0[aout]`
+      `${mixLabels}amix=inputs=${narrated.length}:duration=longest:dropout_transition=0:normalize=0[aout]`
     );
 
     await ffmpeg(
@@ -1080,8 +1135,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
         `[1:a]volume=${MUSIC_VOLUME},` +
         `afade=t=in:st=0:d=${MUSIC_FADE},` +
         `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
-        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
+        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1[aout]`,
       '-map', '0:v', '-map', '[aout]',
       '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
       outPathTmp
@@ -1090,7 +1144,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
     if (musicIsTemp) try { fs.unlinkSync(loopedMusicPath); } catch {}
   }
   fs.unlinkSync(tmpCombined);
-  if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+  try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   fs.renameSync(outPathTmp, outPath);
 }
 
@@ -1116,7 +1170,7 @@ async function appendThumbnailFrame(portraitPath, thumbnailImgPath) {
     '-c:a', 'aac', '-b:a', '192k',
     tmpPath
   );
-  if (fs.existsSync(portraitPath)) fs.unlinkSync(portraitPath);
+  try { fs.unlinkSync(portraitPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   fs.renameSync(tmpPath, portraitPath);
 }
 
@@ -1358,9 +1412,53 @@ async function main() {
   const totalDuration = clips.reduce((s, c) => s + c.duration, 0) - (clips.length - 1) * TRANSITION_S;
   console.log(`\nAssembling ${clips.length} clips (~${totalDuration.toFixed(0)}s)...`);
 
-  console.log('Assembling 16:9 landscape variant...');
-  await buildFinalVideo(landscapeClips.length ? landscapeClips : clips, MUSIC_PATH, OUTPUT_MP4_BLUR);
-  console.log(`Done!  →  ${OUTPUT_MP4_BLUR}`);
+  const useIntro = INTRO_MUSIC_PATH && fs.existsSync(INTRO_MUSIC_PATH);
+
+  if (useIntro) {
+    const introDuration = INTRO_DURATION_OVERRIDE > 0
+      ? INTRO_DURATION_OVERRIDE
+      : await getMediaDuration(INTRO_MUSIC_PATH);
+    console.log(`\nBuilding landscape intro segment (${introDuration.toFixed(1)}s)...`);
+
+    const coverPage = pages.find(p => p.number === 1);
+    if (!coverPage) throw new Error('No cover page (page 1) found for intro freeze frame.');
+
+    let introFramePath;
+    const useCustomImg = INTRO_IMAGE_PATH && fs.existsSync(INTRO_IMAGE_PATH);
+    if (useCustomImg && !INTRO_SHOW_TEXT) {
+      // Custom image, no text — scale/crop to 1920×1080
+      introFramePath = path.join(os.tmpdir(), `sb_intro_frame_${Date.now()}.png`);
+      await sharp(INTRO_IMAGE_PATH)
+        .resize(LAND_W, LAND_H, { fit: 'cover', position: 'centre' })
+        .png()
+        .toFile(introFramePath);
+    } else {
+      // Auto (page 1) or custom image with text overlay
+      const srcImg = useCustomImg ? INTRO_IMAGE_PATH
+        : (findSourceImage(1, pageImageMap) || path.join(OUTPUT_PAGES_DIR, `${pad(1)}.png`));
+      introFramePath = await buildLandscapeFrame(srcImg, coverPage.text, {
+        isCover: true, textColor: LAND_TEXT_COLOR_COVER,
+      });
+    }
+
+    const introSegPath  = path.join(OUTPUT_VIDEO_DIR, 'land_intro_seg.mp4');
+    await buildLandscapeIntroSeg(introFramePath, INTRO_MUSIC_PATH, introDuration, introSegPath);
+    try { fs.unlinkSync(introFramePath); } catch {}
+
+    const mainLandPath = path.join(OUTPUT_VIDEO_DIR, 'land_main.mp4');
+    console.log('Assembling 16:9 landscape variant...');
+    await buildFinalVideo(landscapeClips.length ? landscapeClips : clips, MUSIC_PATH, mainLandPath);
+
+    console.log('Generating 16:9 landscape video with intro...');
+    await concatVideos(introSegPath, mainLandPath, OUTPUT_MP4_BLUR);
+    try { fs.unlinkSync(introSegPath); } catch {}
+    try { fs.unlinkSync(mainLandPath); } catch {}
+    console.log(`Done!  →  ${OUTPUT_MP4_BLUR}`);
+  } else {
+    console.log('Assembling 16:9 landscape variant...');
+    await buildFinalVideo(landscapeClips.length ? landscapeClips : clips, MUSIC_PATH, OUTPUT_MP4_BLUR);
+    console.log(`Done!  →  ${OUTPUT_MP4_BLUR}`);
+  }
 
   // Portrait 9:16 (1080×1920) — YouTube Shorts
   // Built from per-page portrait frames: source image top half, text bottom half.

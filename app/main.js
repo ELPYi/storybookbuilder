@@ -53,7 +53,7 @@ const SETTINGS_PATH = path.join(app.getPath('userData'), 'storybook-settings.jso
 // ─── Settings ──────────────────────────────────────────────────────────────────
 function defaultSettings() {
   return {
-    voice: 'af_heart', ttsVolume: 1.0, musicVolume: 0.05,
+    voice: 'af_heart', ttsVolume: 2.0, musicVolume: 0.3,
     highlightColor: '#FF8800', highlightStyle: 'box',
     pageSize: { width: 8.5, height: 8.5, unit: 'in' },
     bleedIn: 0.125,
@@ -458,7 +458,9 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
 ipcMain.handle('build:video', async (event, opts) => {
   const { voice, ttsVolume, musicVolume, clearCache, musicPath,
           highlightColor, highlightStyle, fontSizeCover, fontSizeStory,
-          shortsThumbnailPath, landscape, shorts } = opts;
+          shortsThumbnailPath, landscape, shorts,
+          introMusicPath, introDurationOverride, introMusicVolume,
+          introImagePath, introShowText } = opts;
 
   // Read page size + layout from saved settings so video matches the built pages
   const s   = loadSettings();
@@ -478,9 +480,14 @@ ipcMain.handle('build:video', async (event, opts) => {
     STORYBOOK_PAGE_W_PX: String(pagePxW),
     STORYBOOK_PAGE_H_PX: String(pagePxH),
     STORYBOOK_LAYOUT:    JSON.stringify(layout),
-    ...(musicPath             ? { MUSIC_PATH:            musicPath             } : {}),
-    ...(highlightColor        ? { KARAOKE_COLOR:         highlightColor        } : {}),
-    ...(shortsThumbnailPath   ? { SHORTS_THUMBNAIL_PATH: shortsThumbnailPath   } : {}),
+    ...(musicPath             ? { MUSIC_PATH:              musicPath             } : {}),
+    ...(highlightColor        ? { KARAOKE_COLOR:           highlightColor        } : {}),
+    ...(shortsThumbnailPath   ? { SHORTS_THUMBNAIL_PATH:   shortsThumbnailPath   } : {}),
+    ...(introMusicPath            ? { INTRO_MUSIC_PATH:         introMusicPath                } : {}),
+    ...(introDurationOverride > 0 ? { INTRO_DURATION_OVERRIDE:  String(introDurationOverride)  } : {}),
+    ...(introMusicVolume != null  ? { INTRO_MUSIC_VOLUME:       String(introMusicVolume)        } : {}),
+    ...(introImagePath            ? { INTRO_IMAGE_PATH:         introImagePath                 } : {}),
+    INTRO_SHOW_TEXT: introShowText ? '1' : '0',
     HIGHLIGHT_STYLE:     highlightStyle || 'box',
     FONT_COVER:          String(fontSizeCover || 90),
     FONT_STORY:          String(fontSizeStory || 76),
