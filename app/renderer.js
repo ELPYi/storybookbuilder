@@ -1,7 +1,7 @@
 'use strict';
 
 // ─── State ─────────────────────────────────────────────────────────────────────
-let settings      = { voice: 'af_heart', ttsVolume: 2.0, musicVolume: 0.65 };
+let settings      = { voice: 'af_heart', ttsVolume: 2.0, musicVolume: 0.3 };
 let imagesDirPath = null;
 let orderedImages = [];         // [{ name, path, isNumbered }] in user's chosen order
 

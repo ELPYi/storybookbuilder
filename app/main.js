@@ -53,7 +53,7 @@ const SETTINGS_PATH = path.join(app.getPath('userData'), 'storybook-settings.jso
 // ─── Settings ──────────────────────────────────────────────────────────────────
 function defaultSettings() {
   return {
-    voice: 'af_heart', ttsVolume: 1.0, musicVolume: 0.05,
+    voice: 'af_heart', ttsVolume: 2.0, musicVolume: 0.3,
     highlightColor: '#FF8800', highlightStyle: 'box',
     pageSize: { width: 8.5, height: 8.5, unit: 'in' },
     bleedIn: 0.125,
