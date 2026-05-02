@@ -1118,8 +1118,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
         `[1:a]volume=${MUSIC_VOLUME},` +
         `afade=t=in:st=0:d=${MUSIC_FADE},` +
         `afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeDur.toFixed(3)}[music];` +
-        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1,` +
-        `loudnorm=I=-16:TP=-1.5:LRA=11[aout]`,
+        `[0:a][music]amix=inputs=2:duration=first:dropout_transition=0:weights=4 1[aout]`,
       '-map', '0:v', '-map', '[aout]',
       '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k',
       outPathTmp
