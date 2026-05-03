@@ -600,7 +600,7 @@ function updateLandscapePreview() {
   const txt      = document.getElementById('land-preview-txt');
   const txtLabel = document.getElementById('land-preview-txt-label');
   if (page && page.text) {
-    const color = isCover ? landscapeSettings.textColorCover : isLast ? landscapeSettings.textColorStory : landscapeSettings.textColorStory;
+    const color = isCover ? landscapeSettings.textColorCover : isLast ? landscapeSettings.textColorLast : landscapeSettings.textColorStory;
     txt.textContent    = page.text;
     txt.style.color    = color;
     txt.style.fontWeight = isCover ? 'bold' : 'normal';
@@ -1242,6 +1242,7 @@ btnVideo.addEventListener('click', async () => {
   });
 
   try {
+    await window.api.saveBookTxtContent(bookTextarea.value);
     const introDurRaw = parseFloat(document.getElementById('intro-duration-override').value);
     await window.api.buildVideo({
       voice:                settings.voice,
