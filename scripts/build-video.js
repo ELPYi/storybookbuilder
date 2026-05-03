@@ -95,6 +95,7 @@ const PORT_FONT_STORY        = parseInt(process.env.PORT_FONT_STORY        || '8
 const PORT_TEXT_COLOR_COVER  = process.env.PORT_TEXT_COLOR_COVER  || '#000000';
 const PORT_TEXT_COLOR_STORY  = process.env.PORT_TEXT_COLOR_STORY  || '#000000';
 const PORT_TEXT_BG           = process.env.PORT_TEXT_BG           || '#ffffff';
+const PORT_PRE_PAUSE         = 2; // seconds of silence before narration in Shorts
 
 // Landscape (16:9) constants: left image, right text.
 const LAND_W         = 1920;
@@ -1289,6 +1290,7 @@ async function main() {
   const clips         = [];
   const landscapeClips = [];
   const portraitClips = [];
+  let portAbsStart = 0;
   const landFramePaths = [];
   const portFramePaths = [];  // temp PNG files to clean up after
 
@@ -1393,17 +1395,20 @@ async function main() {
     }
 
     if (portFramePath) {
+      const portClipDur = clipDur + PORT_PRE_PAUSE;
+      const portNarStart = portAbsStart + TRANSITION_S + PORT_PRE_PAUSE;
       const portStartFont = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
       const { filter: portHighlightFilter, wordFiles: portWordFiles, overlays: portOverlays } =
-        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
+        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S + PORT_PRE_PAUSE, {
           bold:          isCover,
           startFontSize: portStartFont,
           portLayout,
           canvasW:       PORT_W,
           canvasH:       PORT_H,
         });
-      await buildPortraitClip(portFramePath, clipDur, hasTypewriter, portClipFile, portHighlightFilter, portWordFiles, portOverlays);
-      portraitClips.push({ videoPath: portClipFile, ttsPath: ttsFile, duration: clipDur, narrationStart });
+      await buildPortraitClip(portFramePath, portClipDur, hasTypewriter, portClipFile, portHighlightFilter, portWordFiles, portOverlays);
+      portraitClips.push({ videoPath: portClipFile, ttsPath: ttsFile, duration: portClipDur, narrationStart: portNarStart });
+      portAbsStart += portClipDur - TRANSITION_S;
     }
   }
 
