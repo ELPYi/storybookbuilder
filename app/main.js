@@ -128,13 +128,13 @@ async function setupPythonEnv(setupWin) {
   // Step 1: Check for Python launcher
   status('Checking for Python...');
   log('Checking for Python (py launcher)...\n');
-  const pyOk = await runCmd('py', ['--version'], d => log(d));
+  const pyOk = await runCmd('py', ['-3.11', '--version'], d => log(d));
 
   if (!pyOk) {
-    status('Installing Python 3.12...\nThis may take a few minutes, please wait.');
-    log('\nPython not found. Installing via Windows package manager...\n');
+    status('Installing Python 3.11...\nThis may take a few minutes, please wait.');
+    log('\nPython 3.11 not found. Installing via Windows package manager...\n');
     const installed = await runCmd('winget', [
-      'install', 'Python.Python.3.12',
+      'install', 'Python.Python.3.11',
       '--silent',
       '--accept-package-agreements',
       '--accept-source-agreements',
@@ -143,7 +143,7 @@ async function setupPythonEnv(setupWin) {
     if (!installed) {
       error(
         'Could not install Python automatically.<br><br>' +
-        'Please install Python 3.12 from <b>python.org</b>, then relaunch Storybook Builder.'
+        'Please install Python 3.11 from <b>python.org</b>, then relaunch Storybook Builder.'
       );
       return false;
     }
@@ -160,7 +160,7 @@ async function setupPythonEnv(setupWin) {
   const pipPkgs = ['kokoro', 'faster-whisper', 'numpy', 'soundfile'];
   const missing = [];
   for (const pkg of pipPkgs) {
-    const ok = await runCmd('py', ['-m', 'pip', 'show', pkg], null);
+    const ok = await runCmd('py', ['-3.11', '-m', 'pip', 'show', pkg], null);
     if (!ok) missing.push(pkg);
   }
 
@@ -173,7 +173,7 @@ async function setupPythonEnv(setupWin) {
       log(`\n▶ Installing ${pkg}...\n`);
       // --only-binary :all: prevents source builds (fail on Python 3.14+ without a C compiler).
       const ok = await runCmd(
-        'py', ['-m', 'pip', 'install', '--only-binary', ':all:', pkg],
+        'py', ['-3.11', '-m', 'pip', 'install', '--only-binary', ':all:', pkg],
         d => log(d)
       );
       if (!ok) {

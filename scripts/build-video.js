@@ -65,6 +65,7 @@ const PAGE_PAUSE   = 1.5;   // silence after each narration before next page sli
 const STILL_SECS   = 3.0;   // display duration for non-narrated pages (title, copyright)
 const TYPEWRITER_S = 2.0;   // seconds for the text wipe-reveal animation
 const TRANSITION_S = 0.5;   // xfade slide transition duration between pages
+const INTRO_XFADE_S = parseFloat(process.env.INTRO_XFADE_S || '1.5'); // dissolve duration between intro and story
 const THUMBNAIL_SECS = 2.0; // duration of the thumbnail frame appended to the 9:16 Shorts video
 
 const SHORTS_THUMBNAIL_PATH    = process.env.SHORTS_THUMBNAIL_PATH    || '';
@@ -292,10 +293,10 @@ function parseBookTxt(content) {
 // ─── TTS ───────────────────────────────────────────────────────────────────────
 async function generateTTS(text, outPath) {
   if (fs.existsSync(outPath)) return; // use cached file
-  // Use py launcher to target Python 3.12 where kokoro/misaki are installed
+  // Use py launcher to target Python 3.11 where kokoro/misaki are installed
   const python = 'py';
   await execFileAsync(python, [
-    '-3.12',
+    '-3.11',
     path.join(__dirname, 'tts.py'),
     text,
     VOICE_ID,
@@ -494,7 +495,7 @@ async function ensureWordTimings(wavPath) {
   }
   // Generate or upgrade with faster-whisper
   process.stdout.write('aligning... ');
-  await execFileAsync('py', ['-3.12', path.join(__dirname, 'whisper_align.py'), wavPath, jsonPath],
+  await execFileAsync('py', ['-3.11', path.join(__dirname, 'whisper_align.py'), wavPath, jsonPath],
     { maxBuffer: 10 * 1024 * 1024 });
   try { return JSON.parse(fs.readFileSync(jsonPath, 'utf8')); }
   catch { return []; }
@@ -908,6 +909,36 @@ async function concatVideos(firstPath, secondPath, outPath) {
         '[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];' +
         '[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];' +
         '[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[vout][aout]',
+      '-map', '[vout]', '-map', '[aout]',
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
+      tmpOut
+    );
+    try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    fs.renameSync(tmpOut, outPath);
+  } catch (err) {
+    try { fs.unlinkSync(tmpOut); } catch {}
+    if (err.code === 'EPERM') throw new Error(`Cannot overwrite ${path.basename(outPath)} — close it in any media player and retry.`);
+    throw err;
+  }
+}
+
+// Joins two MP4 files with a dissolve crossfade of xfadeDur seconds.
+// Video: xfade=fade overlaps the last xfadeDur seconds of first with the first xfadeDur of second.
+// Audio: acrossfade blends the two audio streams over the same window.
+async function concatVideosWithCrossfade(firstPath, secondPath, outPath, xfadeDur) {
+  const firstDur = await getMediaDuration(firstPath);
+  const offset = Math.max(0, firstDur - xfadeDur);
+  const tmpOut = outPath + '.tmp.mp4';
+  try {
+    await ffmpeg(
+      '-i', firstPath,
+      '-i', secondPath,
+      '-filter_complex',
+        `[0:a]aformat=sample_rates=44100:channel_layouts=stereo[a0];` +
+        `[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];` +
+        `[0:v][1:v]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}[vout];` +
+        `[a0][a1]acrossfade=d=${xfadeDur.toFixed(3)}:c1=tri:c2=tri[aout]`,
       '-map', '[vout]', '-map', '[aout]',
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
@@ -1454,8 +1485,8 @@ async function main() {
     console.log('Assembling 16:9 landscape variant...');
     await buildFinalVideo(landscapeClips.length ? landscapeClips : clips, MUSIC_PATH, mainLandPath);
 
-    console.log('Generating 16:9 landscape video with intro...');
-    await concatVideos(introSegPath, mainLandPath, OUTPUT_MP4_BLUR);
+    console.log(`Generating 16:9 landscape video with intro (${INTRO_XFADE_S}s crossfade)...`);
+    await concatVideosWithCrossfade(introSegPath, mainLandPath, OUTPUT_MP4_BLUR, INTRO_XFADE_S);
     try { fs.unlinkSync(introSegPath); } catch {}
     try { fs.unlinkSync(mainLandPath); } catch {}
     console.log(`Done!  →  ${OUTPUT_MP4_BLUR}`);
