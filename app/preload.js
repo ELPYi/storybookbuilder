@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   // Builds
   buildBook:         (opts)  => ipcRenderer.invoke('build:book', opts),
   buildVideo:        (opts)  => ipcRenderer.invoke('build:video', opts),
+  buildLyricsVideo:  (opts)  => ipcRenderer.invoke('build:lyrics-video', opts),
   cancelBuild:       ()      => ipcRenderer.invoke('build:cancel'),
 
   // Events from main → renderer

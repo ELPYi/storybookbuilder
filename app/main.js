@@ -506,3 +506,38 @@ ipcMain.handle('build:video', async (event, opts) => {
   });
 });
 
+ipcMain.handle('build:lyrics-video', async (event, opts) => {
+  const { lyricsText, audioPath, imagePath,
+          highlightColor, highlightStyle, musicVolume, sectionXfade,
+          landscape, portrait } = opts;
+
+  const outputDir = path.join(DATA_ROOT, 'output', 'video');
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  // Save lyrics text to a file so the worker script can read it
+  const lyricsPath = path.join(outputDir, 'lyrics_input.txt');
+  fs.writeFileSync(lyricsPath, lyricsText || '', 'utf8');
+
+  const land = landscape || {};
+  const port = portrait  || {};
+
+  await runBuild(event, 'lyrics-video-worker.js', {
+    LV_LYRICS_PATH:  lyricsPath,
+    LV_AUDIO_PATH:   audioPath,
+    LV_IMAGE_PATH:   imagePath,
+    LV_OUTPUT_DIR:   outputDir,
+    KARAOKE_COLOR:   highlightColor || '#FF8800',
+    HIGHLIGHT_STYLE: highlightStyle || 'box',
+    MUSIC_VOLUME:    String(musicVolume  ?? 1.0),
+    SECTION_XFADE_S: String(sectionXfade ?? 0.4),
+    LAND_IMG_RATIO:  String(land.imgRatio ?? 0.6),
+    LAND_FONT:       String(land.font     ?? 48),
+    LAND_TEXT_COLOR: land.textColor || '#000000',
+    LAND_TEXT_BG:    land.textBg    || '#ffffff',
+    PORT_IMG_RATIO:  String(port.imgRatio ?? 0.6),
+    PORT_FONT:       String(port.font     ?? 80),
+    PORT_TEXT_COLOR: port.textColor || '#000000',
+    PORT_TEXT_BG:    port.textBg    || '#ffffff',
+  });
+});
+

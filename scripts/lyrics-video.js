@@ -532,7 +532,11 @@ async function assembleVideo(clips, audioPath, songDuration, outPath) {
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const [,, lyricsPath, audioPath, imagePath, outputDir = '.'] = process.argv;
+  // Paths can come from env vars (when run via GUI worker) or CLI args
+  const lyricsPath = process.env.LV_LYRICS_PATH || process.argv[2];
+  const audioPath  = process.env.LV_AUDIO_PATH  || process.argv[3];
+  const imagePath  = process.env.LV_IMAGE_PATH  || process.argv[4];
+  const outputDir  = process.env.LV_OUTPUT_DIR  || process.argv[5] || '.';
 
   if (!lyricsPath || !audioPath || !imagePath) {
     console.error('Usage: node lyrics-video.js <lyrics.txt> <audio.(mp3|wav)> <image.(png|jpg)> [output-dir]');
