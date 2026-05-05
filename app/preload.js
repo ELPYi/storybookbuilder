@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('api', {
   // File helpers
   saveBookTxtContent:   (c)  => ipcRenderer.invoke('files:save-book-txt-content', c),
   getImageList:         (d)  => ipcRenderer.invoke('files:get-image-list', d),
-  copyImagesOrdered:    (a)  => ipcRenderer.invoke('files:copy-images-ordered', a),
+  copyImagesOrdered:        (a) => ipcRenderer.invoke('files:copy-images-ordered', a),
+  copyLyricsImagesOrdered:  (a) => ipcRenderer.invoke('lyrics:copy-images-ordered', a),
   bookTxtExists:        ()   => ipcRenderer.invoke('files:book-txt-exists'),
   pagesExist:           ()   => ipcRenderer.invoke('files:pages-exist'),
 

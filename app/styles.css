@@ -53,6 +53,39 @@ header h1 span { color: var(--accent); }
 }
 #settings-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ── Main nav tabs ───────────────────────────────────────────────────────────── */
+.main-nav {
+  display: flex;
+  gap: 4px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 56px;
+  z-index: 9;
+}
+.main-nav-btn {
+  padding: 7px 20px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--muted);
+  transition: all .15s;
+}
+.main-nav-btn:hover { color: var(--text); border-color: var(--border); }
+.main-nav-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Main tab panels ─────────────────────────────────────────────────────────── */
+.main-panel { display: none; }
+.main-panel.active { display: block; }
+
 /* ── Main layout ─────────────────────────────────────────────────────────────── */
 main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
 
@@ -266,7 +299,8 @@ main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
 }
 
 /* ── Paste textarea ──────────────────────────────────────────────────────────── */
-#book-textarea {
+#book-textarea,
+#lv-lyrics {
   width: 100%;
   height: 200px;
   padding: 12px;
@@ -281,8 +315,10 @@ main { padding: 24px 28px; width: 100%; box-sizing: border-box; }
   color: var(--text);
   background: var(--surface);
 }
-#book-textarea:focus { border-color: var(--accent); }
-#book-textarea::placeholder { color: var(--muted); }
+#book-textarea:focus,
+#lv-lyrics:focus { border-color: var(--accent); }
+#book-textarea::placeholder,
+#lv-lyrics::placeholder { color: var(--muted); }
 .paste-hint {
   margin-top: 6px;
   font-size: 11px;

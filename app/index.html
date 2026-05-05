@@ -12,7 +12,16 @@
   <h1>📚 Storybook <span>Builder</span></h1>
 </header>
 
+<nav class="main-nav">
+  <button class="main-nav-btn active" data-main-tab="book">Book Builder</button>
+  <button class="main-nav-btn" data-main-tab="video">Video Builder</button>
+  <button class="main-nav-btn" data-main-tab="lyrics">Lyrics Video</button>
+</nav>
+
 <main>
+
+  <!-- ── Shared Inputs (hidden on Lyrics tab) ─────────────────────────────── -->
+  <div id="shared-inputs">
 
   <!-- ── Book Text Input ───────────────────────────────────────────────────── -->
   <div class="card">
@@ -59,7 +68,10 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Book Builder ───────────────────────────────────────────────────────── -->
+  </div><!-- /#shared-inputs -->
+
+  <!-- ── Book Builder tab panel ───────────────────────────────────────────── -->
+  <div id="main-panel-book" class="main-panel active">
   <div class="card">
     <div class="card-title">Book Builder</div>
 
@@ -196,7 +208,10 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Video Builder ──────────────────────────────────────────────────────── -->
+  </div><!-- /#main-panel-book -->
+
+  <!-- ── Video Builder tab panel ──────────────────────────────────────────── -->
+  <div id="main-panel-video" class="main-panel">
   <div class="card">
     <div class="card-title">Video Builder</div>
 
@@ -332,15 +347,15 @@ Image: page 2 illustration"
           <input type="number" id="intro-duration-override" min="1" step="1" placeholder="Auto from audio"/>
         </div>
         <div class="form-group" style="min-width:160px">
-          <label>Intro Volume — <span class="slider-val" id="intro-music-vol-val">0.30</span></label>
-          <input type="range" id="intro-music-vol" min="0.0" max="1.0" step="0.05" value="0.30"/>
+          <label>Intro Volume — <span class="slider-val" id="intro-music-vol-val">0.70</span></label>
+          <input type="range" id="intro-music-vol" min="0.0" max="1.0" step="0.05" value="0.70"/>
         </div>
       </div>
       <div class="intro-controls" style="margin-top:8px">
         <button class="btn btn-ghost" id="btn-select-intro-image">🖼 Select Intro Image</button>
         <span class="music-file-name" id="intro-image-file-name" style="color:var(--muted);font-style:italic">Auto (title page)</span>
         <label id="intro-show-text-label" class="intro-show-text-label" style="display:none">
-          <input type="checkbox" id="intro-show-text" checked/>
+          <input type="checkbox" id="intro-show-text"/>
           Show title text
         </label>
       </div>
@@ -446,7 +461,10 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Lyrics Video Builder ─────────────────────────────────────────────── -->
+  </div><!-- /#main-panel-video -->
+
+  <!-- ── Lyrics Video tab panel ───────────────────────────────────────────── -->
+  <div id="main-panel-lyrics" class="main-panel">
   <div class="card">
     <div class="card-title">Lyrics Video Builder</div>
 
@@ -455,7 +473,7 @@ Image: page 2 illustration"
 
     <div class="form-group" style="margin-bottom:12px">
       <label>Lyrics <span style="color:var(--muted);font-weight:400">(section labels like "(Verse 1)" are stripped automatically)</span></label>
-      <textarea id="lv-lyrics" style="height:160px;margin-top:6px" placeholder="(Verse 1)
+      <textarea id="lv-lyrics" style="margin-top:6px" placeholder="(Verse 1)
 In a workshop of copper and shimmering light...
 
 (Chorus)
@@ -470,9 +488,20 @@ Tick-tock, hear the Timberland chime..."></textarea>
       <span class="music-file-name" id="lv-audio-name" style="color:var(--muted);font-style:italic">No song selected</span>
     </div>
 
-    <div class="action-row" style="margin-bottom:16px">
-      <button class="btn btn-ghost" id="btn-lv-image">🖼 Select Image</button>
-      <span class="music-file-name" id="lv-image-name" style="color:var(--muted);font-style:italic">No image selected</span>
+    <div class="drop-zone" id="dz-lv-img">
+      <div class="dz-icon">🖼</div>
+      <div class="dz-label">
+        <strong>Images Folder</strong><br>
+        Drop folder or <u>click to browse</u>
+      </div>
+      <div class="dz-status" id="dz-lv-img-status"></div>
+    </div>
+    <div id="lv-image-sorter-wrap" style="display:none;margin-bottom:12px">
+      <div class="sorter-header">
+        <span class="sorter-hint">Drag to reorder — slide order updates automatically</span>
+        <span class="sorter-count" id="lv-sorter-count"></span>
+      </div>
+      <div id="lv-image-sorter" class="image-sorter"></div>
     </div>
 
     <!-- Global settings -->
@@ -485,14 +514,14 @@ Tick-tock, hear the Timberland chime..."></textarea>
           <select id="lv-highlight-style">
             <option value="box">Box (semi-transparent)</option>
             <option value="underline">Underline</option>
-            <option value="color">Font Color Change</option>
+            <option value="color" selected>Font Color Change</option>
           </select>
         </div>
         <div class="form-group">
           <label>Highlight Color</label>
           <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
-            <input type="color" id="lv-highlight-color" value="#FF8800" style="width:40px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none"/>
-            <span id="lv-highlight-color-val" style="font-size:12px;color:var(--muted);font-family:monospace">#FF8800</span>
+            <input type="color" id="lv-highlight-color" value="#00bfff" style="width:40px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none"/>
+            <span id="lv-highlight-color-val" style="font-size:12px;color:var(--muted);font-family:monospace">#00BFFF</span>
           </div>
         </div>
         <div class="form-group">
@@ -502,8 +531,8 @@ Tick-tock, hear the Timberland chime..."></textarea>
       </div>
       <div class="inline-settings-row" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">
         <div class="form-group">
-          <label>Section crossfade — <span class="slider-val" id="lv-xfade-val">0.40</span>s</label>
-          <input type="range" id="lv-xfade" min="0.0" max="2.0" step="0.1" value="0.4"/>
+          <label>Section crossfade — <span class="slider-val" id="lv-xfade-val">0.15</span>s</label>
+          <input type="range" id="lv-xfade" min="0.0" max="2.0" step="0.05" value="0.15"/>
         </div>
         <div></div>
         <div></div>
@@ -600,6 +629,7 @@ Tick-tock, hear the Timberland chime..."></textarea>
       </div>
     </div>
   </div>
+  </div><!-- /#main-panel-lyrics -->
 
 </main>
 

@@ -506,12 +506,33 @@ ipcMain.handle('build:video', async (event, opts) => {
   });
 });
 
+ipcMain.handle('lyrics:copy-images-ordered', (_, orderedPaths) => {
+  const destDir = path.join(DATA_ROOT, 'input', 'lyrics-images');
+  const tmpNew  = path.join(DATA_ROOT, 'input', 'lyrics-images_new');
+  const tmpOld  = path.join(DATA_ROOT, 'input', 'lyrics-images_old');
+
+  fs.rmSync(tmpNew, { recursive: true, force: true });
+  fs.mkdirSync(tmpNew, { recursive: true });
+  orderedPaths.forEach((srcPath, idx) => {
+    const ext = path.extname(srcPath).toLowerCase();
+    fs.copyFileSync(srcPath, path.join(tmpNew, String(idx + 1).padStart(2, '0') + ext));
+  });
+
+  fs.rmSync(tmpOld, { recursive: true, force: true });
+  if (fs.existsSync(destDir)) fs.renameSync(destDir, tmpOld);
+  fs.renameSync(tmpNew, destDir);
+  try { fs.rmSync(tmpOld, { recursive: true, force: true }); } catch {}
+
+  return orderedPaths.length;
+});
+
 ipcMain.handle('build:lyrics-video', async (event, opts) => {
-  const { lyricsText, audioPath, imagePath,
+  const { lyricsText, audioPath,
           highlightColor, highlightStyle, musicVolume, sectionXfade,
           landscape, portrait } = opts;
 
-  const outputDir = path.join(DATA_ROOT, 'output', 'video');
+  const outputDir  = path.join(DATA_ROOT, 'output');
+  const imageDir   = path.join(DATA_ROOT, 'input', 'lyrics-images');
   fs.mkdirSync(outputDir, { recursive: true });
 
   // Save lyrics text to a file so the worker script can read it
@@ -524,7 +545,7 @@ ipcMain.handle('build:lyrics-video', async (event, opts) => {
   await runBuild(event, 'lyrics-video-worker.js', {
     LV_LYRICS_PATH:  lyricsPath,
     LV_AUDIO_PATH:   audioPath,
-    LV_IMAGE_PATH:   imagePath,
+    LV_IMAGE_DIR:    imageDir,
     LV_OUTPUT_DIR:   outputDir,
     KARAOKE_COLOR:   highlightColor || '#FF8800',
     HIGHLIGHT_STYLE: highlightStyle || 'box',

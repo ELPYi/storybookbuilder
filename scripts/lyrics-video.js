@@ -61,7 +61,8 @@ const PORT_TEXT_COLOR  = process.env.PORT_TEXT_COLOR  || '#000000';
 const LAND_TEXT_BG     = process.env.LAND_TEXT_BG     || '#ffffff';
 const PORT_TEXT_BG     = process.env.PORT_TEXT_BG     || '#ffffff';
 
-const SECTION_XFADE_S  = parseFloat(process.env.SECTION_XFADE_S || '0.4');
+const SECTION_XFADE_S  = parseFloat(process.env.SECTION_XFADE_S || '0.15');
+const IMG_XFADE_S      = 1.0; // fixed dissolve duration between slideshow images
 const HIGHLIGHT_STYLE  = process.env.HIGHLIGHT_STYLE  || 'box';
 const KARAOKE_COLOR    = process.env.KARAOKE_COLOR    || '#FF8800';
 const MUSIC_VOLUME     = parseFloat(process.env.MUSIC_VOLUME    || '1.0');
@@ -138,7 +139,10 @@ async function getWordTimings(audioPath, cacheDir) {
 
 // Normalise a word for matching: lowercase, strip non-alphanumeric.
 function normWord(w) {
-  return w.toLowerCase().replace(/[^a-z0-9']/g, '');
+  return w
+    .toLowerCase()
+    .replace(/â€™|[‘’]/g, "'")
+    .replace(/[^a-z0-9]/g, '');
 }
 
 // Maps whisper timings to sections by sequential word matching.
@@ -148,41 +152,53 @@ function normWord(w) {
 // Returns sections enriched with { words, clipStart, clipEnd }.
 
 function mapTimingsToSections(sections, allTimings, songDuration) {
-  // Flatten lyric words with their section index
-  const lyricWords = sections.flatMap((s, si) =>
-    s.text.split(/\s+/).filter(Boolean).map(w => ({ norm: normWord(w), sectionIdx: si }))
-  );
-
   const sectionWordTimings = sections.map(() => []);
   let tIdx = 0;
+  let consecutiveMisses = 0;
 
-  for (const lw of lyricWords) {
-    if (!lw.norm) continue;
-    const LOOK = 15;
-    for (let t = tIdx; t < Math.min(tIdx + LOOK, allTimings.length); t++) {
-      if (normWord(allTimings[t].word) === lw.norm) {
-        sectionWordTimings[lw.sectionIdx].push(allTimings[t]);
-        tIdx = t + 1;
-        break;
+  for (let sectionIdx = 0; sectionIdx < sections.length; sectionIdx++) {
+    const lyricWords = sections[sectionIdx].text.split(/\s+/).filter(Boolean);
+    for (const word of lyricWords) {
+      const lw = normWord(word);
+      if (!lw) {
+        sectionWordTimings[sectionIdx].push(null);
+        continue;
       }
+
+      let match = null;
+      // Keep a placeholder for unmatched words so one Whisper mismatch does not
+      // shift every later highlight onto the wrong lyric word.
+      const LOOK = consecutiveMisses >= 3 ? 40 : 8;
+      for (let t = tIdx; t < Math.min(tIdx + LOOK, allTimings.length); t++) {
+        if (normWord(allTimings[t].word) === lw) {
+          match = allTimings[t];
+          tIdx = t + 1;
+          break;
+        }
+      }
+      consecutiveMisses = match ? 0 : consecutiveMisses + 1;
+      sectionWordTimings[sectionIdx].push(match);
     }
   }
 
   // Compute raw start/end from matched words
   const rich = sections.map((s, i) => {
     const words = sectionWordTimings[i];
+    const matchedWords = words.filter(Boolean);
     return {
       ...s,
       words,
-      rawStart: words.length ? words[0].start        : null,
-      rawEnd:   words.length ? words[words.length - 1].end : null,
+      matchedWordCount: matchedWords.length,
+      rawStart: matchedWords.length ? matchedWords[0].start : null,
+      rawEnd:   matchedWords.length ? matchedWords[matchedWords.length - 1].end : null,
     };
   });
 
   // Extend each section's clip to the next section's start (fills gaps / instrumentals).
+  // The first clip starts at 0 so instrumental intros stay in the video timeline.
   // Last section extends to end of song.
   return rich.map((s, i) => {
-    const clipStart = s.rawStart ?? 0;
+    const clipStart = i === 0 ? 0 : (s.rawStart ?? rich[i - 1]?.rawEnd ?? 0);
     const clipEnd   = i < rich.length - 1
       ? (rich[i + 1].rawStart ?? s.rawEnd ?? songDuration)
       : songDuration;
@@ -324,6 +340,7 @@ async function buildKaraokeFilter(text, wordTimings, timeOffset, layout, startFo
   for (let i = 0; i < n; i++) {
     const box = wordBoxes[i];
     const tim = wordTimings[i];
+    if (!tim) continue;
     const t0  = (tim.start - timeOffset);
     const t1  = (tim.end   - timeOffset);
     if (t1 <= t0 || t0 < 0) continue;
@@ -411,7 +428,9 @@ function buildTextSvg(text, W, H, startFontSize, textColor) {
 
 async function buildLandscapeFrame(imagePath, text) {
   const tmpPath = path.join(os.tmpdir(), `lv_land_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const imgBuf  = await sharp(imagePath).resize(LAND_IMG_W, LAND_H, { fit: 'cover', position: 'centre' }).png().toBuffer();
+  const imgBuf  = imagePath
+    ? await sharp(imagePath).resize(LAND_IMG_W, LAND_H, { fit: 'cover', position: 'centre' }).png().toBuffer()
+    : await sharp({ create: { width: LAND_IMG_W, height: LAND_H, channels: 3, background: '#ffffff' } }).png().toBuffer();
   const txtSvg  = buildTextSvg(text, LAND_TXT_W, LAND_TXT_H, LAND_FONT, LAND_TEXT_COLOR);
   const txtBuf  = await sharp({ create: { width: LAND_TXT_W, height: LAND_TXT_H, channels: 4, background: LAND_TEXT_BG } })
     .composite([{ input: txtSvg, top: 0, left: 0 }]).png().toBuffer();
@@ -423,7 +442,9 @@ async function buildLandscapeFrame(imagePath, text) {
 
 async function buildPortraitFrame(imagePath, text) {
   const tmpPath = path.join(os.tmpdir(), `lv_port_${Date.now()}_${Math.random().toString(36).slice(2)}.png`);
-  const imgBuf  = await sharp(imagePath).resize(PORT_W, PORT_IMG_H, { fit: 'cover', position: 'centre' }).png().toBuffer();
+  const imgBuf  = imagePath
+    ? await sharp(imagePath).resize(PORT_W, PORT_IMG_H, { fit: 'cover', position: 'centre' }).png().toBuffer()
+    : await sharp({ create: { width: PORT_W, height: PORT_IMG_H, channels: 3, background: '#ffffff' } }).png().toBuffer();
   const txtSvg  = buildTextSvg(text, PORT_TXT_W, PORT_TXT_H, PORT_FONT, PORT_TEXT_COLOR);
   const txtBuf  = await sharp({ create: { width: PORT_TXT_W, height: PORT_TXT_H, channels: 4, background: PORT_TEXT_BG } })
     .composite([{ input: txtSvg, top: 0, left: 0 }]).png().toBuffer();
@@ -463,7 +484,7 @@ async function buildClip(framePath, duration, canvasW, canvasH, vFilter, highlig
     await ffmpeg(
       '-loop', '1', '-i', framePath,
       ...extraInputs,
-      '-/filter_complex', filterScript,
+      '-filter_complex_script', filterScript,
       '-map', '[vout]',
       '-t', String(duration),
       '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
@@ -529,23 +550,109 @@ async function assembleVideo(clips, audioPath, songDuration, outPath) {
   fs.renameSync(tmpFinal, outPath);
 }
 
+// ─── Image slideshow builder ───────────────────────────────────────────────────
+// Builds a silent video where imagePaths cycle evenly across songDuration,
+// each dissolving into the next with a fixed IMG_XFADE_S crossfade.
+
+async function buildImageSlideshow(imagePaths, songDuration, W, H, outPath) {
+  const N = imagePaths.length;
+  const T = songDuration / N;
+  const xfadeDur = Math.min(IMG_XFADE_S, T * 0.4);
+
+  if (N === 1) {
+    await ffmpeg(
+      '-loop', '1', '-i', imagePaths[0],
+      '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`,
+      '-t', String(songDuration),
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-an', outPath
+    );
+    return;
+  }
+
+  const inputs = [];
+  for (let i = 0; i < N - 1; i++) {
+    inputs.push('-loop', '1', '-t', String(T + xfadeDur), '-i', imagePaths[i]);
+  }
+  inputs.push('-loop', '1', '-t', String(T), '-i', imagePaths[N - 1]);
+
+  const filterParts = [];
+  for (let i = 0; i < N; i++) {
+    filterParts.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[v${i}]`);
+  }
+
+  let prev = '[v0]';
+  let offset = 0;
+  for (let i = 0; i < N - 1; i++) {
+    offset += T;
+    const out = i === N - 2 ? '[xfinal]' : `[x${i + 1}]`;
+    filterParts.push(`${prev}[v${i + 1}]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}${out}`);
+    prev = out;
+  }
+
+  await ffmpeg(
+    ...inputs,
+    '-filter_complex', filterParts.join(';'),
+    '-map', '[xfinal]',
+    '-t', String(songDuration),
+    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-an', outPath
+  );
+}
+
+// Overlays slideshowPath onto videoPath at position (x, y), preserving audio.
+async function compositeSlideshow(videoPath, slideshowPath, x, y, outPath) {
+  const tmpPath = outPath + '_slide_tmp.mp4';
+  try {
+    await ffmpeg(
+      '-i', videoPath,
+      '-i', slideshowPath,
+      '-filter_complex', `[0:v][1:v]overlay=${x}:${y}[vout]`,
+      '-map', '[vout]', '-map', '0:a',
+      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:a', 'copy', '-shortest',
+      tmpPath
+    );
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    throw err;
+  }
+  try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  fs.renameSync(tmpPath, outPath);
+}
+
 // ─── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
   // Paths can come from env vars (when run via GUI worker) or CLI args
   const lyricsPath = process.env.LV_LYRICS_PATH || process.argv[2];
   const audioPath  = process.env.LV_AUDIO_PATH  || process.argv[3];
-  const imagePath  = process.env.LV_IMAGE_PATH  || process.argv[4];
-  const outputDir  = process.env.LV_OUTPUT_DIR  || process.argv[5] || '.';
+  const outputDir  = process.env.LV_OUTPUT_DIR  || process.argv[4] || '.';
 
-  if (!lyricsPath || !audioPath || !imagePath) {
-    console.error('Usage: node lyrics-video.js <lyrics.txt> <audio.(mp3|wav)> <image.(png|jpg)> [output-dir]');
+  // Resolve image paths: prefer image directory (multi-image slideshow),
+  // fall back to single image path for CLI backward compat.
+  const imageDir = process.env.LV_IMAGE_DIR || '';
+  const imagePaths = (() => {
+    if (imageDir && fs.existsSync(imageDir)) {
+      const exts = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+      const files = fs.readdirSync(imageDir)
+        .filter(f => exts.has(path.extname(f).toLowerCase()))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
+        .map(f => path.join(imageDir, f));
+      if (files.length) return files;
+    }
+    const single = process.env.LV_IMAGE_PATH || process.argv[5];
+    if (single && fs.existsSync(single)) return [single];
+    return [];
+  })();
+
+  if (!lyricsPath || !audioPath) {
+    console.error('Usage: node lyrics-video.js <lyrics.txt> <audio> [output-dir]');
     process.exit(1);
   }
 
-  for (const f of [lyricsPath, audioPath, imagePath]) {
+  for (const f of [lyricsPath, audioPath]) {
     if (!fs.existsSync(f)) throw new Error(`File not found: ${f}`);
   }
+  if (!imagePaths.length) throw new Error('No images found. Provide LV_IMAGE_DIR with at least one image.');
 
   fs.mkdirSync(outputDir, { recursive: true });
 
@@ -562,7 +669,7 @@ async function main() {
 
   console.log('\nSection timing map:');
   richSections.forEach(s => {
-    console.log(`  [${s.label}] ${s.clipStart.toFixed(2)}s → ${s.clipEnd.toFixed(2)}s  (${s.words.length} words matched)`);
+    console.log(`  [${s.label}] ${s.clipStart.toFixed(2)}s → ${s.clipEnd.toFixed(2)}s  (${s.matchedWordCount}/${s.words.length} words matched)`);
   });
 
   // ── Build landscape clips ──────────────────────────────────────────────────────
@@ -573,7 +680,7 @@ async function main() {
 
   for (let i = 0; i < richSections.length; i++) {
     const s         = richSections[i];
-    const framePath = await buildLandscapeFrame(imagePath, s.text);
+    const framePath = await buildLandscapeFrame(null, s.text);
     tmpFrames.push(framePath);
     const clipPath  = path.join(outputDir, `land_clip_${String(i).padStart(2, '0')}.mp4`);
     const vFilter   = `scale=${LAND_W}:${LAND_H}`;
@@ -582,7 +689,8 @@ async function main() {
       s.text, s.words, s.clipStart, landLayout, LAND_FONT, LAND_W, LAND_H
     );
     process.stdout.write(`  Section ${i + 1}/${richSections.length} [${s.label}]... `);
-    await buildClip(framePath, s.clipDuration, LAND_W, LAND_H, vFilter, filter, overlays, clipPath);
+    const clipDuration = s.clipDuration + (i < richSections.length - 1 ? SECTION_XFADE_S : 0);
+    await buildClip(framePath, clipDuration, LAND_W, LAND_H, vFilter, filter, overlays, clipPath);
     for (const wf of wordFiles) try { fs.unlinkSync(wf); } catch {}
     landClips.push(clipPath);
     console.log('done');
@@ -595,7 +703,7 @@ async function main() {
 
   for (let i = 0; i < richSections.length; i++) {
     const s         = richSections[i];
-    const framePath = await buildPortraitFrame(imagePath, s.text);
+    const framePath = await buildPortraitFrame(null, s.text);
     tmpFrames.push(framePath);
     const clipPath  = path.join(outputDir, `port_clip_${String(i).padStart(2, '0')}.mp4`);
     const vFilter   = `scale=${PORT_W}:${PORT_H}`;
@@ -604,7 +712,8 @@ async function main() {
       s.text, s.words, s.clipStart, portLayout, PORT_FONT, PORT_W, PORT_H
     );
     process.stdout.write(`  Section ${i + 1}/${richSections.length} [${s.label}]... `);
-    await buildClip(framePath, s.clipDuration, PORT_W, PORT_H, vFilter, filter, overlays, clipPath);
+    const clipDuration = s.clipDuration + (i < richSections.length - 1 ? SECTION_XFADE_S : 0);
+    await buildClip(framePath, clipDuration, PORT_W, PORT_H, vFilter, filter, overlays, clipPath);
     for (const wf of wordFiles) try { fs.unlinkSync(wf); } catch {}
     portClips.push(clipPath);
     console.log('done');
@@ -623,6 +732,21 @@ async function main() {
   await assembleVideo(portClips, audioPath, songDuration, portOutPath);
   console.log(`Done  →  ${portOutPath}`);
 
+  // ── Build image slideshow and composite onto both videos ───────────────────────
+  console.log(`\nBuilding image slideshow (${imagePaths.length} image${imagePaths.length !== 1 ? 's' : ''})...`);
+  const landSlidePath = path.join(outputDir, 'land_slideshow_tmp.mp4');
+  const portSlidePath = path.join(outputDir, 'port_slideshow_tmp.mp4');
+  await buildImageSlideshow(imagePaths, songDuration, LAND_IMG_W, LAND_H,    landSlidePath);
+  await buildImageSlideshow(imagePaths, songDuration, PORT_W,     PORT_IMG_H, portSlidePath);
+
+  console.log('Compositing slideshow onto 16:9 video...');
+  await compositeSlideshow(landOutPath, landSlidePath, 0, 0, landOutPath);
+  console.log('Compositing slideshow onto 9:16 video...');
+  await compositeSlideshow(portOutPath, portSlidePath, 0, 0, portOutPath);
+
+  try { fs.unlinkSync(landSlidePath); } catch {}
+  try { fs.unlinkSync(portSlidePath); } catch {}
+
   // ── Cleanup ────────────────────────────────────────────────────────────────────
   for (const f of [...tmpFrames, ...landClips, ...portClips]) {
     try { fs.unlinkSync(f); } catch {}
@@ -640,4 +764,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseLyrics, mapTimingsToSections, buildLandscapeFrame, buildPortraitFrame };
+module.exports = { main, parseLyrics, mapTimingsToSections, buildLandscapeFrame, buildPortraitFrame };

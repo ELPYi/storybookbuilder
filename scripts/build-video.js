@@ -1426,11 +1426,12 @@ async function main() {
     }
 
     if (portFramePath) {
-      const portClipDur = clipDur + PORT_PRE_PAUSE;
-      const portNarStart = portAbsStart + TRANSITION_S + PORT_PRE_PAUSE;
+      const portPause = p.number === 1 ? PORT_PRE_PAUSE : 0;
+      const portClipDur = clipDur + portPause;
+      const portNarStart = portAbsStart + TRANSITION_S + portPause;
       const portStartFont = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
       const { filter: portHighlightFilter, wordFiles: portWordFiles, overlays: portOverlays } =
-        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S + PORT_PRE_PAUSE, {
+        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S + portPause, {
           bold:          isCover,
           startFontSize: portStartFont,
           portLayout,
