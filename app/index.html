@@ -12,7 +12,16 @@
   <h1>📚 Storybook <span>Builder</span></h1>
 </header>
 
+<nav class="main-nav">
+  <button class="main-nav-btn active" data-main-tab="book">Book Builder</button>
+  <button class="main-nav-btn" data-main-tab="video">Video Builder</button>
+  <button class="main-nav-btn" data-main-tab="lyrics">Lyrics Video</button>
+</nav>
+
 <main>
+
+  <!-- ── Shared Inputs (hidden on Lyrics tab) ─────────────────────────────── -->
+  <div id="shared-inputs">
 
   <!-- ── Book Text Input ───────────────────────────────────────────────────── -->
   <div class="card">
@@ -59,7 +68,10 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Book Builder ───────────────────────────────────────────────────────── -->
+  </div><!-- /#shared-inputs -->
+
+  <!-- ── Book Builder tab panel ───────────────────────────────────────────── -->
+  <div id="main-panel-book" class="main-panel active">
   <div class="card">
     <div class="card-title">Book Builder</div>
 
@@ -196,7 +208,10 @@ Image: page 2 illustration"
     </div>
   </div>
 
-  <!-- ── Video Builder ──────────────────────────────────────────────────────── -->
+  </div><!-- /#main-panel-book -->
+
+  <!-- ── Video Builder tab panel ──────────────────────────────────────────── -->
+  <div id="main-panel-video" class="main-panel">
   <div class="card">
     <div class="card-title">Video Builder</div>
 
@@ -332,15 +347,15 @@ Image: page 2 illustration"
           <input type="number" id="intro-duration-override" min="1" step="1" placeholder="Auto from audio"/>
         </div>
         <div class="form-group" style="min-width:160px">
-          <label>Intro Volume — <span class="slider-val" id="intro-music-vol-val">0.30</span></label>
-          <input type="range" id="intro-music-vol" min="0.0" max="1.0" step="0.05" value="0.30"/>
+          <label>Intro Volume — <span class="slider-val" id="intro-music-vol-val">0.70</span></label>
+          <input type="range" id="intro-music-vol" min="0.0" max="1.0" step="0.05" value="0.70"/>
         </div>
       </div>
       <div class="intro-controls" style="margin-top:8px">
         <button class="btn btn-ghost" id="btn-select-intro-image">🖼 Select Intro Image</button>
         <span class="music-file-name" id="intro-image-file-name" style="color:var(--muted);font-style:italic">Auto (title page)</span>
         <label id="intro-show-text-label" class="intro-show-text-label" style="display:none">
-          <input type="checkbox" id="intro-show-text" checked/>
+          <input type="checkbox" id="intro-show-text"/>
           Show title text
         </label>
       </div>
@@ -445,6 +460,176 @@ Image: page 2 illustration"
       </div>
     </div>
   </div>
+
+  </div><!-- /#main-panel-video -->
+
+  <!-- ── Lyrics Video tab panel ───────────────────────────────────────────── -->
+  <div id="main-panel-lyrics" class="main-panel">
+  <div class="card">
+    <div class="card-title">Lyrics Video Builder</div>
+
+    <!-- Inputs -->
+    <div class="section-divider">Inputs</div>
+
+    <div class="form-group" style="margin-bottom:12px">
+      <label>Lyrics <span style="color:var(--muted);font-weight:400">(section labels like "(Verse 1)" are stripped automatically)</span></label>
+      <textarea id="lv-lyrics" style="margin-top:6px" placeholder="(Verse 1)
+In a workshop of copper and shimmering light...
+
+(Chorus)
+Tick-tock, hear the Timberland chime..."></textarea>
+      <div style="margin-top:6px">
+        <button class="btn btn-ghost" id="btn-lv-load-lyrics">📄 Load from file</button>
+      </div>
+    </div>
+
+    <div class="action-row" style="margin-bottom:12px">
+      <button class="btn btn-ghost" id="btn-lv-audio">🎵 Select Song</button>
+      <span class="music-file-name" id="lv-audio-name" style="color:var(--muted);font-style:italic">No song selected</span>
+    </div>
+
+    <div class="drop-zone" id="dz-lv-img">
+      <div class="dz-icon">🖼</div>
+      <div class="dz-label">
+        <strong>Images Folder</strong><br>
+        Drop folder or <u>click to browse</u>
+      </div>
+      <div class="dz-status" id="dz-lv-img-status"></div>
+    </div>
+    <div id="lv-image-sorter-wrap" style="display:none;margin-bottom:12px">
+      <div class="sorter-header">
+        <span class="sorter-hint">Drag to reorder — slide order updates automatically</span>
+        <span class="sorter-count" id="lv-sorter-count"></span>
+      </div>
+      <div id="lv-image-sorter" class="image-sorter"></div>
+    </div>
+
+    <!-- Global settings -->
+    <div class="section-divider">Settings</div>
+
+    <div class="inline-settings">
+      <div class="inline-settings-row" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="form-group">
+          <label>Highlight Style</label>
+          <select id="lv-highlight-style">
+            <option value="box">Box (semi-transparent)</option>
+            <option value="underline">Underline</option>
+            <option value="color" selected>Font Color Change</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Highlight Color</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:2px">
+            <input type="color" id="lv-highlight-color" value="#00bfff" style="width:40px;height:32px;padding:2px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:none"/>
+            <span id="lv-highlight-color-val" style="font-size:12px;color:var(--muted);font-family:monospace">#00BFFF</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Song Volume — <span class="slider-val" id="lv-music-vol-val">1.00</span></label>
+          <input type="range" id="lv-music-vol" min="0.0" max="2.0" step="0.05" value="1.0"/>
+        </div>
+      </div>
+      <div class="inline-settings-row" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px">
+        <div class="form-group">
+          <label>Section crossfade — <span class="slider-val" id="lv-xfade-val">0.15</span>s</label>
+          <input type="range" id="lv-xfade" min="0.0" max="2.0" step="0.05" value="0.15"/>
+        </div>
+        <div></div>
+        <div></div>
+      </div>
+    </div>
+
+    <!-- Format tabs -->
+    <div class="layout-tab-bar" style="margin-top:16px">
+      <button class="layout-tab-btn active" data-lv-tab="lv-landscape">Landscape (16:9)</button>
+      <button class="layout-tab-btn" data-lv-tab="lv-portrait">Portrait (9:16)</button>
+    </div>
+
+    <!-- Landscape tab -->
+    <div id="tab-panel-lv-landscape" class="video-format-panel visible">
+      <div class="split-control">
+        <span class="split-label">Image / Text split</span>
+        <input type="range" id="lv-land-img-ratio" min="10" max="90" step="5" value="60"/>
+        <span class="split-label"><span class="split-val" id="lv-land-img-ratio-val">60</span>% image &nbsp;/&nbsp; <span id="lv-land-txt-ratio-val">40</span>% text</span>
+      </div>
+      <div class="font-size-row">
+        <div>
+          <label>Font size (max)</label>
+          <div class="font-size-control">
+            <input type="range" id="lv-land-font" min="20" max="150" step="1" value="48"/>
+            <span class="font-size-val" id="lv-land-font-val">48</span>
+          </div>
+        </div>
+        <div>
+          <label>Text color</label>
+          <div class="color-picker-control">
+            <input type="color" id="lv-land-text-color" value="#000000"/>
+            <span id="lv-land-text-color-val">#000000</span>
+          </div>
+        </div>
+        <div>
+          <label>Text area background</label>
+          <div class="color-picker-control">
+            <input type="color" id="lv-land-text-bg" value="#ffffff"/>
+            <span id="lv-land-text-bg-val">#FFFFFF</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Portrait tab -->
+    <div id="tab-panel-lv-portrait" class="video-format-panel">
+      <div class="split-control">
+        <span class="split-label">Image / Text split</span>
+        <input type="range" id="lv-port-img-ratio" min="10" max="90" step="5" value="60"/>
+        <span class="split-label"><span class="split-val" id="lv-port-img-ratio-val">60</span>% image &nbsp;/&nbsp; <span id="lv-port-txt-ratio-val">40</span>% text</span>
+      </div>
+      <div class="font-size-row">
+        <div>
+          <label>Font size (max)</label>
+          <div class="font-size-control">
+            <input type="range" id="lv-port-font" min="20" max="150" step="1" value="80"/>
+            <span class="font-size-val" id="lv-port-font-val">80</span>
+          </div>
+        </div>
+        <div>
+          <label>Text color</label>
+          <div class="color-picker-control">
+            <input type="color" id="lv-port-text-color" value="#000000"/>
+            <span id="lv-port-text-color-val">#000000</span>
+          </div>
+        </div>
+        <div>
+          <label>Text area background</label>
+          <div class="color-picker-control">
+            <input type="color" id="lv-port-text-bg" value="#ffffff"/>
+            <span id="lv-port-text-bg-val">#FFFFFF</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Build action -->
+    <div class="action-row" style="margin-top:16px">
+      <button class="btn btn-success" id="btn-lv-build">▶ Build Lyrics Video</button>
+      <button class="btn btn-danger" id="btn-lv-cancel" style="display:none">✕ Cancel</button>
+    </div>
+
+    <div class="progress-section" id="lv-progress">
+      <div class="progress-header">
+        <span class="progress-label" id="lv-progress-label">Building…</span>
+        <span class="progress-pct" id="lv-progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="lv-bar"></div>
+      </div>
+      <div class="log-box" id="lv-log"></div>
+      <div class="done-row" id="lv-done">
+        <button class="btn btn-ghost" id="lv-open-output">📂 Open Output Folder</button>
+      </div>
+    </div>
+  </div>
+  </div><!-- /#main-panel-lyrics -->
 
 </main>
 

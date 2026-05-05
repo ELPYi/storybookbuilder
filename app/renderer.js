@@ -1331,3 +1331,330 @@ setHighlightColor.addEventListener('input', () => {
 });
 setHighlightColor.addEventListener('change', saveInlineSettings);
 setHighlightStyle.addEventListener('change', saveInlineSettings);
+
+// ─── Main navigation tabs ──────────────────────────────────────────────────────
+document.querySelectorAll('.main-nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.mainTab;
+    document.querySelectorAll('.main-nav-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.main-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(`main-panel-${tab}`).classList.add('active');
+    document.getElementById('shared-inputs').style.display = tab === 'lyrics' ? 'none' : '';
+  });
+});
+
+// ─── Lyrics Video Builder ──────────────────────────────────────────────────────
+
+let lvAudioPath     = null;
+let lvImagesDirPath = null;
+let lvOrderedImages = [];
+
+// Format settings (mirrors landscapeSettings / shortsSettings pattern)
+let lvLandSettings = { imgRatio: 0.6, font: 48, textColor: '#000000', textBg: '#ffffff' };
+let lvPortSettings = { imgRatio: 0.6, font: 80, textColor: '#000000', textBg: '#ffffff' };
+
+// ── Tab switching ──────────────────────────────────────────────────────────────
+document.querySelectorAll('[data-lv-tab]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-lv-tab]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const target = btn.dataset.lvTab;
+    document.getElementById('tab-panel-lv-landscape').classList.toggle('visible', target === 'lv-landscape');
+    document.getElementById('tab-panel-lv-portrait').classList.toggle('visible',  target === 'lv-portrait');
+  });
+});
+
+// ── File pickers ───────────────────────────────────────────────────────────────
+document.getElementById('btn-lv-load-lyrics').addEventListener('click', async () => {
+  const result = await window.api.openFile([{ name: 'Text Files', extensions: ['txt'] }]);
+  if (result) {
+    const { readFileSync } = require !== undefined ? { readFileSync: null } : {};
+    // Renderer can't use fs directly — ask main to read the file content
+    // Use a workaround: open-file returns path, then we fetch content via a hidden fetch
+    // Since Electron allows file:// in the renderer, read it via XHR
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', 'file:///' + result.replace(/\\/g, '/'), false);
+      xhr.send();
+      document.getElementById('lv-lyrics').value = xhr.responseText;
+    } catch {
+      alert('Could not read the file. Please paste the lyrics manually.');
+    }
+  }
+});
+
+document.getElementById('btn-lv-audio').addEventListener('click', async () => {
+  const result = await window.api.openFile([
+    { name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'] },
+  ]);
+  if (result) {
+    lvAudioPath = result;
+    const nameEl = document.getElementById('lv-audio-name');
+    nameEl.textContent  = result.split(/[\\/]/).pop();
+    nameEl.style.color      = '';
+    nameEl.style.fontStyle  = '';
+  }
+});
+
+// ─── Lyrics Video image folder drop zone & sorter ──────────────────────────────
+const dzLvImg       = document.getElementById('dz-lv-img');
+const dzLvImgStatus = document.getElementById('dz-lv-img-status');
+const lvSorterWrap  = document.getElementById('lv-image-sorter-wrap');
+const lvSorterEl    = document.getElementById('lv-image-sorter');
+const lvSorterCount = document.getElementById('lv-sorter-count');
+
+setupDropZone(dzLvImg, 'directory', async (dirPath, name) => {
+  lvImagesDirPath = dirPath;
+  dzLvImgStatus.textContent = '✓ ' + name;
+  dzLvImg.classList.add('ready');
+  const images = await window.api.getImageList(dirPath);
+  lvOrderedImages = images;
+  renderLvSorter();
+  lvSorterWrap.style.display = '';
+});
+
+let lvDragSrcEl   = null;
+let lvPlaceholder = null;
+
+function renderLvSorter() {
+  lvSorterEl.innerHTML = '';
+  lvSorterCount.textContent = `${lvOrderedImages.length} image${lvOrderedImages.length !== 1 ? 's' : ''}`;
+  lvOrderedImages.forEach((img, idx) => {
+    const item = document.createElement('div');
+    item.className  = 'img-item';
+    item.draggable  = true;
+    item.dataset.path = img.path;
+    item.innerHTML = `
+      <img class="img-thumb" src="file://${img.path.replace(/\\/g, '/')}" alt="${img.name}"/>
+      <div class="img-item-footer">
+        <span class="img-name" title="${img.name}">${img.name}</span>
+        <span class="page-badge">${idx + 1}</span>
+      </div>`;
+    item.addEventListener('dragstart', onLvDragStart);
+    item.addEventListener('dragend',   onLvDragEnd);
+    lvSorterEl.appendChild(item);
+  });
+  lvSorterEl.addEventListener('dragover', onLvDragOver);
+  lvSorterEl.addEventListener('drop',     onLvDrop);
+}
+
+function onLvDragStart(e) {
+  lvDragSrcEl = e.currentTarget;
+  lvDragSrcEl.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  lvPlaceholder = document.createElement('div');
+  lvPlaceholder.className = 'img-placeholder';
+  lvPlaceholder.style.height = lvDragSrcEl.getBoundingClientRect().height + 'px';
+}
+
+function onLvDragEnd() {
+  if (lvPlaceholder) { lvPlaceholder.remove(); lvPlaceholder = null; }
+  lvSorterEl.querySelectorAll('.img-item').forEach(el => {
+    el.classList.remove('dragging');
+    el.style.transform = el.style.transition = '';
+  });
+  lvDragSrcEl = null;
+}
+
+function onLvDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (!lvPlaceholder) return;
+  const items = [...lvSorterEl.querySelectorAll('.img-item:not(.dragging)')];
+  let insertBefore = null;
+  for (const item of items) {
+    const r = item.getBoundingClientRect();
+    if ((e.clientY >= r.top && e.clientY <= r.bottom && e.clientX < r.left + r.width / 2) || e.clientY < r.top) {
+      insertBefore = item; break;
+    }
+  }
+  if (lvPlaceholder.nextSibling === (insertBefore || null)) return;
+  const before = new Map(items.map(el => [el, el.getBoundingClientRect()]));
+  if (insertBefore) lvSorterEl.insertBefore(lvPlaceholder, insertBefore);
+  else              lvSorterEl.appendChild(lvPlaceholder);
+  items.forEach(el => {
+    const f = before.get(el), l = el.getBoundingClientRect();
+    const dx = f.left - l.left, dy = f.top - l.top;
+    if (!dx && !dy) return;
+    el.style.transition = 'none';
+    el.style.transform  = `translate(${dx}px,${dy}px)`;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transition = 'transform 200ms cubic-bezier(0.25,1,0.5,1)';
+      el.style.transform  = '';
+    }));
+  });
+}
+
+function onLvDrop(e) {
+  e.preventDefault();
+  if (!lvDragSrcEl || !lvPlaceholder) return;
+  const dropIdx = [...lvSorterEl.children].indexOf(lvPlaceholder);
+  const srcIdx  = lvOrderedImages.findIndex(i => i.path === lvDragSrcEl.dataset.path);
+  lvPlaceholder.remove(); lvPlaceholder = null;
+  const moved = lvOrderedImages.splice(srcIdx, 1)[0];
+  lvOrderedImages.splice(Math.min(srcIdx < dropIdx ? dropIdx - 1 : dropIdx, lvOrderedImages.length), 0, moved);
+  renderLvSorter();
+}
+
+// ── Global settings sliders / pickers ─────────────────────────────────────────
+const lvMusicVolEl    = document.getElementById('lv-music-vol');
+const lvMusicVolValEl = document.getElementById('lv-music-vol-val');
+lvMusicVolEl.addEventListener('input', () => {
+  lvMusicVolValEl.textContent = Number(lvMusicVolEl.value).toFixed(2);
+});
+
+const lvXfadeEl    = document.getElementById('lv-xfade');
+const lvXfadeValEl = document.getElementById('lv-xfade-val');
+lvXfadeEl.addEventListener('input', () => {
+  lvXfadeValEl.textContent = Number(lvXfadeEl.value).toFixed(2);
+});
+
+const lvHighlightColorEl    = document.getElementById('lv-highlight-color');
+const lvHighlightColorValEl = document.getElementById('lv-highlight-color-val');
+lvHighlightColorEl.addEventListener('input', () => {
+  lvHighlightColorValEl.textContent = lvHighlightColorEl.value.toUpperCase();
+});
+
+// ── Landscape format settings ──────────────────────────────────────────────────
+const lvLandImgRatio    = document.getElementById('lv-land-img-ratio');
+const lvLandImgRatioVal = document.getElementById('lv-land-img-ratio-val');
+const lvLandTxtRatioVal = document.getElementById('lv-land-txt-ratio-val');
+lvLandImgRatio.addEventListener('input', () => {
+  const v = parseInt(lvLandImgRatio.value);
+  lvLandImgRatioVal.textContent = v;
+  lvLandTxtRatioVal.textContent = 100 - v;
+  lvLandSettings.imgRatio = v / 100;
+});
+
+const lvLandFont    = document.getElementById('lv-land-font');
+const lvLandFontVal = document.getElementById('lv-land-font-val');
+lvLandFont.addEventListener('input', () => {
+  lvLandFontVal.textContent = lvLandFont.value;
+  lvLandSettings.font = parseInt(lvLandFont.value);
+});
+
+const lvLandTextColor    = document.getElementById('lv-land-text-color');
+const lvLandTextColorVal = document.getElementById('lv-land-text-color-val');
+lvLandTextColor.addEventListener('input', () => {
+  lvLandTextColorVal.textContent = lvLandTextColor.value.toUpperCase();
+  lvLandSettings.textColor = lvLandTextColor.value;
+});
+
+const lvLandTextBg    = document.getElementById('lv-land-text-bg');
+const lvLandTextBgVal = document.getElementById('lv-land-text-bg-val');
+lvLandTextBg.addEventListener('input', () => {
+  lvLandTextBgVal.textContent = lvLandTextBg.value.toUpperCase();
+  lvLandSettings.textBg = lvLandTextBg.value;
+});
+
+// ── Portrait format settings ───────────────────────────────────────────────────
+const lvPortImgRatio    = document.getElementById('lv-port-img-ratio');
+const lvPortImgRatioVal = document.getElementById('lv-port-img-ratio-val');
+const lvPortTxtRatioVal = document.getElementById('lv-port-txt-ratio-val');
+lvPortImgRatio.addEventListener('input', () => {
+  const v = parseInt(lvPortImgRatio.value);
+  lvPortImgRatioVal.textContent = v;
+  lvPortTxtRatioVal.textContent = 100 - v;
+  lvPortSettings.imgRatio = v / 100;
+});
+
+const lvPortFont    = document.getElementById('lv-port-font');
+const lvPortFontVal = document.getElementById('lv-port-font-val');
+lvPortFont.addEventListener('input', () => {
+  lvPortFontVal.textContent = lvPortFont.value;
+  lvPortSettings.font = parseInt(lvPortFont.value);
+});
+
+const lvPortTextColor    = document.getElementById('lv-port-text-color');
+const lvPortTextColorVal = document.getElementById('lv-port-text-color-val');
+lvPortTextColor.addEventListener('input', () => {
+  lvPortTextColorVal.textContent = lvPortTextColor.value.toUpperCase();
+  lvPortSettings.textColor = lvPortTextColor.value;
+});
+
+const lvPortTextBg    = document.getElementById('lv-port-text-bg');
+const lvPortTextBgVal = document.getElementById('lv-port-text-bg-val');
+lvPortTextBg.addEventListener('input', () => {
+  lvPortTextBgVal.textContent = lvPortTextBg.value.toUpperCase();
+  lvPortSettings.textBg = lvPortTextBg.value;
+});
+
+// ── Build button ───────────────────────────────────────────────────────────────
+const btnLvBuild    = document.getElementById('btn-lv-build');
+const btnLvCancel   = document.getElementById('btn-lv-cancel');
+const lvProgress    = document.getElementById('lv-progress');
+const lvBar         = document.getElementById('lv-bar');
+const lvProgressPct = document.getElementById('lv-progress-pct');
+const lvProgressLbl = document.getElementById('lv-progress-label');
+const lvLog         = document.getElementById('lv-log');
+const lvDone        = document.getElementById('lv-done');
+
+function setLvBuildingState(isBuilding) {
+  btnLvBuild.disabled          = isBuilding;
+  btnLvCancel.style.display    = isBuilding ? '' : 'none';
+  btnLvCancel.disabled         = false;
+  btnLvCancel.textContent      = '✕ Cancel';
+}
+
+btnLvCancel.addEventListener('click', async () => {
+  btnLvCancel.disabled    = true;
+  btnLvCancel.textContent = 'Cancelling…';
+  await window.api.cancelBuild();
+});
+
+btnLvBuild.addEventListener('click', async () => {
+  const lyricsText = document.getElementById('lv-lyrics').value.trim();
+  if (!lyricsText)           return alert('Please paste or load lyrics first.');
+  if (!lvAudioPath)          return alert('Please select a song file.');
+  if (!lvOrderedImages.length) return alert('Please select an images folder.');
+
+  setLvBuildingState(true);
+  resetBuild(lvProgress, lvBar, lvProgressPct, lvProgressLbl, lvLog, lvDone);
+  setProgress(lvBar, lvProgressPct, lvProgressLbl, 2, 'Starting…');
+
+  window.api.offBuildLog();
+  window.api.onBuildLog(chunk => {
+    appendLog(lvLog, chunk, /error|fail/i.test(chunk) ? 'error' : null);
+    // Simple progress: bump on each section built
+    for (const line of chunk.split(/\r?\n/)) {
+      if (/Aligning lyrics/i.test(line))  setProgress(lvBar, lvProgressPct, lvProgressLbl, 10, 'Aligning to audio…');
+      if (/Section timing map/i.test(line)) setProgress(lvBar, lvProgressPct, lvProgressLbl, 20, 'Timings mapped…');
+      if (/landscape.*clips/i.test(line))   setProgress(lvBar, lvProgressPct, lvProgressLbl, 25, 'Building landscape clips…');
+      if (/portrait.*clips/i.test(line))    setProgress(lvBar, lvProgressPct, lvProgressLbl, 55, 'Building portrait clips…');
+      if (/Assembling 16:9/i.test(line))    setProgress(lvBar, lvProgressPct, lvProgressLbl, 80, 'Assembling 16:9…');
+      if (/Assembling 9:16/i.test(line))    setProgress(lvBar, lvProgressPct, lvProgressLbl, 90, 'Assembling 9:16…');
+    }
+  });
+
+  try {
+    await window.api.copyLyricsImagesOrdered(lvOrderedImages.map(i => i.path));
+    await window.api.buildLyricsVideo({
+      lyricsText,
+      audioPath:      lvAudioPath,
+      highlightColor: lvHighlightColorEl.value,
+      highlightStyle: document.getElementById('lv-highlight-style').value,
+      musicVolume:    parseFloat(lvMusicVolEl.value),
+      sectionXfade:   parseFloat(lvXfadeEl.value),
+      landscape:      lvLandSettings,
+      portrait:       lvPortSettings,
+    });
+    lvBar.classList.add('success');
+    setProgress(lvBar, lvProgressPct, lvProgressLbl, 100, 'Done!');
+    lvDone.classList.add('visible');
+  } catch (err) {
+    const cancelled = err.message === 'BUILD_CANCELLED';
+    if (cancelled) {
+      appendLog(lvLog, '\nBuild cancelled.', 'error');
+      setProgress(lvBar, lvProgressPct, lvProgressLbl, 0, 'Cancelled');
+    } else {
+      appendLog(lvLog, '\n' + (err.message || String(err)), 'error');
+      setProgress(lvBar, lvProgressPct, lvProgressLbl, 0, 'Failed');
+    }
+  } finally {
+    window.api.offBuildLog();
+    setLvBuildingState(false);
+  }
+});
+
+document.getElementById('lv-open-output').addEventListener('click', () => window.api.openOutput());

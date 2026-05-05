@@ -7,6 +7,7 @@
     "start": "electron app/main.js",
     "build-book": "node scripts/build-book.js",
     "build-video": "node scripts/build-video.js",
+    "build-lyrics-video": "node scripts/lyrics-video.js",
     "dist": "node scripts/package.js",
     "dist-installer": "electron-builder --win",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -58,6 +59,7 @@
       }
     ],
     "win": {
+      "sign": null,
       "target": [
         {
           "target": "dir",
