@@ -1,28 +1,52 @@
 # Storybook Builder
 
-A Windows desktop app that turns a storybook script and images into a narrated, karaoke-style video, ready for YouTube or YouTube Shorts.
+A Windows desktop app that turns a storybook script and images into narrated karaoke-style videos, ready for YouTube or YouTube Shorts. Also includes a standalone **Lyrics Video** builder for music tracks.
 
 ## What it does
 
-1. **Write a script**: paste or import a structured `book.txt` with pages, image references, and narration lines
-2. **Arrange images**: drag-and-drop your illustrations into order
-3. **Build pages**: renders each page as a 300 DPI PNG (with optional PDF/DOCX export)
-4. **Build video**: runs AI text-to-speech (Kokoro), aligns audio with Whisper, and assembles everything with FFmpeg into a narrated video with word-level karaoke highlighting
+The app has three builders, each on its own tab:
+
+### Book Builder
+Renders your storybook script into high-quality page images (300 DPI PNG, PDF, or DOCX).
+
+### Video Builder
+Takes your rendered pages and produces a narrated video with word-level karaoke highlighting:
+1. Paste your `book.txt` script and arrange your images in order
+2. AI text-to-speech (Kokoro) generates narration for each page
+3. Faster-Whisper aligns audio to word-level timestamps
+4. FFmpeg assembles pages, narration, karaoke highlights, background music, and an intro clip into a finished video
+
+Outputs both **Landscape (16:9)** and **Shorts (9:16)** formats simultaneously.
+
+### Lyrics Video Builder
+Builds a standalone karaoke-style music video from a lyrics file and a song:
+1. Paste your lyrics (section labels like `(Verse 1)` are stripped automatically)
+2. Drop a folder of images — they play as an **independent slideshow** on their own timer, separate from the text
+3. Reorder images by drag-and-drop before building
+4. Faster-Whisper aligns lyrics to word-level timestamps
+5. FFmpeg composites the image slideshow over the karaoke text track
+
+Outputs both **Landscape (1920×1080)** and **Portrait (1080×1920)** formats simultaneously.
 
 ## Features
 
 - AI narration via [Kokoro TTS](https://github.com/hexgrad/kokoro) (local, offline, MIT licensed)
-- Word-level karaoke highlight sync (box, underline, or color modes)
+- Word-level karaoke highlight sync — box, underline, or font color modes
 - Background music mixed in automatically from your `music/` folder
-- Configurable page size, layout, font sizes, and text colors
-- YouTube Shorts support (custom thumbnail)
+- Custom intro image with optional title text overlay
+- Adjustable volume for narration, intro music, and song tracks
+- Image slideshow for lyrics videos with crossfade transitions and independent timing
+- Configurable page size, font sizes, text colors, and layout ratios per format
+- YouTube Shorts support (9:16 layout)
+- 2-second pre-narration pause on title page for Shorts clips
+- Tabbed UI: Book Builder, Video Builder, Lyrics Video — each with its own settings
 - First-run wizard that auto-installs Python and all AI packages via `pip`
 - Packaged as a standalone Windows installer (no dev environment needed)
 
 ## Requirements (dev)
 
 - [Node.js](https://nodejs.org) 18+
-- [Python](https://www.python.org) 3.12 (installed automatically on first run if missing)
+- [Python](https://www.python.org) 3.11 (installed automatically on first run if missing)
 - [FFmpeg](https://ffmpeg.org): place `ffmpeg.exe` in the `ffmpeg-bin/` folder or install via WinGet
 
 ## Getting started
@@ -50,7 +74,7 @@ Image: 02.jpg
 Line 1: One day she found a golden acorn.
 ```
 
-Place matching images in `input/images/` (numbered filenames like `01.jpg` are sorted automatically).
+Place matching images in `input/images/` (numbered filenames like `01.jpg` are sorted automatically). You can also drag-and-drop a folder and reorder images in the GUI.
 
 ## Build scripts
 
@@ -64,29 +88,44 @@ Place matching images in `input/images/` (numbered filenames like `01.jpg` are s
 ## Project structure
 
 ```
-app/             Electron main + renderer process
-  main.js        Main process: IPC handlers, build runners, Python setup
-  renderer.js    UI logic
-  workers/       Worker threads for book and video builds
+app/
+  main.js              Main process: IPC handlers, build runners, Python setup
+  renderer.js          UI logic (tab switching, image sorter, build controls)
+  preload.js           Context bridge (exposes safe IPC API to renderer)
+  index.html           App layout and UI structure
+  styles.css           Dark theme styles
+  workers/
+    book-worker.js     Worker thread for page rendering
+    video-worker.js    Worker thread for video builds
+    lyrics-video-worker.js  Worker thread for lyrics video builds
 scripts/
-  build-book.js  Page rendering (sharp, pdf-lib, docx)
-  build-video.js Video assembly (FFmpeg, Kokoro TTS, Whisper alignment)
-  tts.py         Python TTS runner (Kokoro)
-  whisper_align.py  Word-level timestamp alignment
-input/           Your script and images (not committed)
-output/          Rendered pages and final video (not committed)
-music/           Background music files (.mp3, .wav, etc.)
-ffmpeg-bin/      Bundled FFmpeg binary for packaged builds
+  build-book.js        Page rendering (sharp, pdf-lib, docx)
+  build-video.js       Video assembly (FFmpeg, Kokoro TTS, Whisper alignment)
+  lyrics-video.js      Lyrics video builder (FFmpeg, image slideshow, karaoke)
+  tts.py               Python TTS runner (Kokoro)
+  whisper_align.py     Word-level timestamp alignment (faster-whisper)
+input/                 Your script, images, and lyrics (not committed)
+output/                Rendered pages and final videos (not committed)
+music/                 Background music files (.mp3, .wav, etc.)
+ffmpeg-bin/            Bundled FFmpeg binary for packaged builds
 ```
 
 ## Settings
 
-Saved automatically to `%APPDATA%\storybook-builder\storybook-settings.json`. Configurable in-app:
+Saved automatically to `%APPDATA%\storybook-builder\storybook-settings.json`. Configurable in-app per builder:
 
-- TTS voice and volume
-- Background music volume
-- Karaoke highlight color and style
-- Page size and image/text box layout
+**Video Builder**
+- TTS voice and narration volume
+- Intro image, title text, and intro music volume
+- Karaoke highlight color and style (box / underline / font color)
+- Page size, image/text split ratio, font sizes, and text/background colors
+- Xfade transition duration between pages
+
+**Lyrics Video Builder**
+- Highlight color and style
+- Image/text split ratio, font sizes, text and background colors
+- Section crossfade duration
+- Song volume
 
 ## License
 
