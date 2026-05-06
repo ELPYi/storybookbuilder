@@ -892,6 +892,16 @@ function renderSorter() {
   sorterCount.textContent = `${orderedImages.length} image${orderedImages.length !== 1 ? 's' : ''}`;
   updateImagePreview();
 
+  if (orderedImages.length === 0) {
+    imageSorterEl.innerHTML = `
+      <div class="img-empty-state">
+        <div class="img-empty-icon">📷</div>
+        <div class="img-empty-title">No images added</div>
+        <div class="img-empty-subtitle">Drag and drop or use the file picker to get started</div>
+      </div>`;
+    return;
+  }
+
   orderedImages.forEach((img, idx) => {
     const item = document.createElement('div');
     item.className = 'img-item';
@@ -907,6 +917,30 @@ function renderSorter() {
       </div>
     `;
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'img-delete-btn';
+    deleteBtn.title = 'Remove image';
+    deleteBtn.innerHTML = '🗑';
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (deleteBtn.classList.contains('confirming')) {
+        orderedImages.splice(idx, 1);
+        renderSorter();
+      } else {
+        deleteBtn.classList.add('confirming');
+        deleteBtn.innerHTML = '✓';
+        deleteBtn.title = 'Click again to confirm removal';
+      }
+    });
+
+    item.addEventListener('mouseleave', () => {
+      deleteBtn.classList.remove('confirming');
+      deleteBtn.innerHTML = '🗑';
+      deleteBtn.title = 'Remove image';
+    });
+
+    item.appendChild(deleteBtn);
     item.addEventListener('dragstart', onDragStart);
     item.addEventListener('dragend',   onDragEnd);
     imageSorterEl.appendChild(item);
@@ -1420,6 +1454,17 @@ let lvPlaceholder = null;
 function renderLvSorter() {
   lvSorterEl.innerHTML = '';
   lvSorterCount.textContent = `${lvOrderedImages.length} image${lvOrderedImages.length !== 1 ? 's' : ''}`;
+
+  if (lvOrderedImages.length === 0) {
+    lvSorterEl.innerHTML = `
+      <div class="img-empty-state">
+        <div class="img-empty-icon">📷</div>
+        <div class="img-empty-title">No images added</div>
+        <div class="img-empty-subtitle">Drag and drop or use the file picker to get started</div>
+      </div>`;
+    return;
+  }
+
   lvOrderedImages.forEach((img, idx) => {
     const item = document.createElement('div');
     item.className  = 'img-item';
@@ -1431,6 +1476,31 @@ function renderLvSorter() {
         <span class="img-name" title="${img.name}">${img.name}</span>
         <span class="page-badge">${idx + 1}</span>
       </div>`;
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'img-delete-btn';
+    deleteBtn.title = 'Remove image';
+    deleteBtn.innerHTML = '🗑';
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (deleteBtn.classList.contains('confirming')) {
+        lvOrderedImages.splice(idx, 1);
+        renderLvSorter();
+      } else {
+        deleteBtn.classList.add('confirming');
+        deleteBtn.innerHTML = '✓';
+        deleteBtn.title = 'Click again to confirm removal';
+      }
+    });
+
+    item.addEventListener('mouseleave', () => {
+      deleteBtn.classList.remove('confirming');
+      deleteBtn.innerHTML = '🗑';
+      deleteBtn.title = 'Remove image';
+    });
+
+    item.appendChild(deleteBtn);
     item.addEventListener('dragstart', onLvDragStart);
     item.addEventListener('dragend',   onLvDragEnd);
     lvSorterEl.appendChild(item);
