@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const { PDFDocument } = require('pdf-lib');
 const {
   Document, Packer, Paragraph, TextRun, ImageRun,
   AlignmentType,
@@ -439,14 +438,34 @@ async function buildPage(page, opts = {}) {
 
   // Resolve layout boxes to pixels within the trim area
   const { imageBox, textBox } = layout;
-  const imgL = BLEED + Math.round(imageBox.x * PAGE_W);
-  const imgT = BLEED + Math.round(imageBox.y * PAGE_H);
-  const imgW = Math.max(1, Math.round(imageBox.w * PAGE_W));
-  const imgH = Math.max(1, Math.round(imageBox.h * PAGE_H));
-  const txtL = BLEED + Math.round(textBox.x * PAGE_W);
-  const txtT = BLEED + Math.round(textBox.y * PAGE_H);
-  const txtW = Math.max(1, Math.round(textBox.w * PAGE_W));
-  const txtH = Math.max(1, Math.round(textBox.h * PAGE_H));
+
+  // Image: extend into bleed on any side that is flush with the trim boundary so
+  // content actually reaches the canvas edge (required for print bleed to work).
+  const rawImgX = Math.round(imageBox.x * PAGE_W);
+  const rawImgY = Math.round(imageBox.y * PAGE_H);
+  const rawImgW = Math.max(1, Math.round(imageBox.w * PAGE_W));
+  const rawImgH = Math.max(1, Math.round(imageBox.h * PAGE_H));
+  const imgBleedL = rawImgX <= 0          ? BLEED : 0;
+  const imgBleedT = rawImgY <= 0          ? BLEED : 0;
+  const imgBleedR = rawImgX + rawImgW >= PAGE_W ? BLEED : 0;
+  const imgBleedB = rawImgY + rawImgH >= PAGE_H ? BLEED : 0;
+  const imgL = BLEED + rawImgX - imgBleedL;
+  const imgT = BLEED + rawImgY - imgBleedT;
+  const imgW = Math.max(1, rawImgW + imgBleedL + imgBleedR);
+  const imgH = Math.max(1, rawImgH + imgBleedT + imgBleedB);
+
+  const rawTxtX = Math.round(textBox.x * PAGE_W);
+  const rawTxtY = Math.round(textBox.y * PAGE_H);
+  const rawTxtW = Math.max(1, Math.round(textBox.w * PAGE_W));
+  const rawTxtH = Math.max(1, Math.round(textBox.h * PAGE_H));
+  const txtBleedL = rawTxtX <= 0                ? BLEED : 0;
+  const txtBleedT = rawTxtY <= 0                ? BLEED : 0;
+  const txtBleedR = rawTxtX + rawTxtW >= PAGE_W ? BLEED : 0;
+  const txtBleedB = rawTxtY + rawTxtH >= PAGE_H ? BLEED : 0;
+  const txtL = BLEED + rawTxtX - txtBleedL;
+  const txtT = BLEED + rawTxtY - txtBleedT;
+  const txtW = Math.max(1, rawTxtW + txtBleedL + txtBleedR);
+  const txtH = Math.max(1, rawTxtH + txtBleedT + txtBleedB);
 
   // White canvas
   const canvas = await sharp({
@@ -482,26 +501,11 @@ async function buildPage(page, opts = {}) {
   return outFile;
 }
 
-async function buildPdf(pageFiles, outPath) {
-  const pdf = await PDFDocument.create();
-  const pageWidthPts  = Math.round(CANVAS_W * 72 / DPI);
-  const pageHeightPts = Math.round(CANVAS_H * 72 / DPI);
-
-  for (const file of pageFiles) {
-    const bytes = fs.readFileSync(file);
-    const img   = await pdf.embedPng(bytes);
-    const page  = pdf.addPage([pageWidthPts, pageHeightPts]);
-    page.drawImage(img, { x: 0, y: 0, width: pageWidthPts, height: pageHeightPts });
-  }
-
-  const pdfBytes = await pdf.save();
-  fs.writeFileSync(outPath, pdfBytes);
-}
 
 async function buildDocx(pages, slug) {
   // ── Unit helpers ─────────────────────────────────────────────────────────
-  // ImageRun.transformation is in 1/100-inch units (docx internal: 9144 EMU each)
-  const pxToImgUnit = px => Math.round(px * 100 / DPI);
+  // ImageRun.transformation is in CSS pixels (96 DPI); docx v9 multiplies by 9525 EMU/px internally.
+  const pxToImgUnit = px => Math.round(px * 96 / DPI);
   // floating image offsets in EMU
   const pxToEMU     = px => Math.round(px / DPI * 914400);
   // frame / page dimensions in twips (1 twip = 1/1440 inch)
@@ -513,11 +517,12 @@ async function buildDocx(pages, slug) {
   const PAGE_H_TWIPS = pxToTwips(PAGE_H);
 
   const { imageBox, textBox } = layout;
-  // Positions relative to trim area (no bleed — DOCX has no bleed)
+
   const imgL = Math.round(imageBox.x * PAGE_W);
   const imgT = Math.round(imageBox.y * PAGE_H);
   const imgW = Math.max(1, Math.round(imageBox.w * PAGE_W));
   const imgH = Math.max(1, Math.round(imageBox.h * PAGE_H));
+
   const txtL = Math.round(textBox.x * PAGE_W);
   const txtT = Math.round(textBox.y * PAGE_H);
   const txtW = Math.max(1, Math.round(textBox.w * PAGE_W));
@@ -526,6 +531,19 @@ async function buildDocx(pages, slug) {
   const pageProps = {
     size:   { width: PAGE_W_TWIPS, height: PAGE_H_TWIPS },
     margin: { top: 0, right: 0, bottom: 0, left: 0, header: 0, footer: 0, gutter: 0 },
+  };
+
+  // Content pages constrain left/right margins to match the text box so Word
+  // doesn't let paragraphs flow beyond the text box's horizontal bounds.
+  const contentPageProps = {
+    size:   { width: PAGE_W_TWIPS, height: PAGE_H_TWIPS },
+    margin: {
+      top: 0,
+      left:   pxToTwips(txtL),
+      right:  pxToTwips(PAGE_W - txtL - txtW),
+      bottom: 0,
+      header: 0, footer: 0, gutter: 0,
+    },
   };
 
   // ── Section builders ──────────────────────────────────────────────────────
@@ -588,7 +606,7 @@ async function buildDocx(pages, slug) {
       children:  runs,
     }));
 
-    return { properties: { page: pageProps }, children };
+    return { properties: { page: contentPageProps }, children };
   }
 
   function titleSection(page) {
@@ -641,8 +659,7 @@ async function buildDocx(pages, slug) {
       `Written & Illustrated by: GMX Creations and Generative Art Assistance & Technology ` +
       `provided by: Google Gemini & Alphabet Inc. Compiled & Designed using: Canva`;
 
-    // 1-inch left/right page margins keep text off the edges cleanly.
-    // header/footer explicitly 0 so they don't exceed the 0 top/bottom margins.
+    // 1-inch left/right margins keep text off the edges; header/footer 0 to match zero top/bottom.
     const copyrightPageProps = {
       size:   { width: PAGE_W_TWIPS, height: PAGE_H_TWIPS },
       margin: { top: 0, right: pxToTwips(DPI), bottom: 0, left: pxToTwips(DPI), header: 0, footer: 0, gutter: 0 },
@@ -714,10 +731,10 @@ async function main() {
   fs.rmSync(OUTPUT_PAGES_DIR, { recursive: true, force: true });
   fs.mkdirSync(OUTPUT_PAGES_DIR, { recursive: true });
 
-  // Remove old PDFs and DOCXs so previous books don't accumulate in output/.
+  // Remove old DOCXs so previous books don't accumulate in output/.
   for (const f of fs.readdirSync(OUTPUT_DIR)) {
     const fPath = path.join(OUTPUT_DIR, f);
-    if ((f.endsWith('.pdf') || f.endsWith('.docx')) && fs.statSync(fPath).isFile()) {
+    if (f.endsWith('.docx') && fs.statSync(fPath).isFile()) {
       fs.unlinkSync(fPath);
     }
   }
@@ -732,7 +749,6 @@ async function main() {
 
   const slugPage    = pages.find(p => titleToSlug(p.text)) || pages[0];
   const slug        = titleToSlug(slugPage.text) || 'storybook';
-  const OUTPUT_PDF  = path.join(OUTPUT_DIR, `${slug}.pdf`);
   const OUTPUT_DOCX = path.join(OUTPUT_DIR, `${slug}.docx`);
 
   console.log(`Parsed ${pages.length} pages from book.txt`);
@@ -759,7 +775,6 @@ async function main() {
     }
   }
 
-  await buildPdf(rendered, OUTPUT_PDF);
   console.log('Building DOCX…');
   await buildDocx(pages, slug);
 
@@ -773,7 +788,7 @@ async function main() {
   // highlights and the typewriter effect to match the actual page layout.
   fs.writeFileSync(path.join(OUTPUT_PAGES_DIR, '.build-layout.json'), JSON.stringify(layout));
 
-  console.log(`\nDone!\nPages: ${OUTPUT_PAGES_DIR}\nPDF:   ${OUTPUT_PDF}\nDOCX:  ${OUTPUT_DOCX}`);
+  console.log(`\nDone!\nPages: ${OUTPUT_PAGES_DIR}\nDOCX:  ${OUTPUT_DOCX}`);
 }
 
 if (require.main === module) {

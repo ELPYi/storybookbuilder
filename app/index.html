@@ -93,7 +93,7 @@ Image: page 2 illustration"
         </select>
       </div>
       <div class="form-group" style="flex:0 0 auto">
-        <label>Bleed (inches)</label>
+        <label>Margin (inches)</label>
         <input type="number" id="page-bleed" min="0" max="0.5" step="0.025" value="0.125" style="width:80px"/>
       </div>
       <button class="btn btn-ghost" id="btn-reset-layout" style="flex-shrink:0;align-self:flex-end">Reset Layout</button>
@@ -107,22 +107,22 @@ Image: page 2 illustration"
       <div>
         <label>Cover font size (max)</label>
         <div class="font-size-control">
-          <input type="range" id="font-cover" min="20" max="150" step="1" value="90"/>
-          <span class="font-size-val" id="font-cover-val">90</span>
+          <input type="range" id="font-cover" min="20" max="150" step="1" value="95"/>
+          <span class="font-size-val" id="font-cover-val">95  (≈ 16pt)</span>
         </div>
       </div>
       <div>
         <label>Story pages font size (max)</label>
         <div class="font-size-control">
-          <input type="range" id="font-story" min="20" max="150" step="1" value="76"/>
-          <span class="font-size-val" id="font-story-val">76</span>
+          <input type="range" id="font-story" min="20" max="150" step="1" value="95"/>
+          <span class="font-size-val" id="font-story-val">95  (≈ 16pt)</span>
         </div>
       </div>
       <div>
         <label>Last page font size (max)</label>
         <div class="font-size-control">
-          <input type="range" id="font-last" min="20" max="150" step="1" value="60"/>
-          <span class="font-size-val" id="font-last-val">60</span>
+          <input type="range" id="font-last" min="20" max="150" step="1" value="65"/>
+          <span class="font-size-val" id="font-last-val">65  (≈ 11pt)</span>
         </div>
       </div>
     </div>
@@ -486,6 +486,8 @@ Tick-tock, hear the Timberland chime..."></textarea>
     <div class="action-row" style="margin-bottom:12px">
       <button class="btn btn-ghost" id="btn-lv-audio">🎵 Select Song</button>
       <span class="music-file-name" id="lv-audio-name" style="color:var(--muted);font-style:italic">No song selected</span>
+      <button class="btn btn-ghost" id="btn-lv-thumbnail">🖼 Shorts Thumbnail</button>
+      <span class="music-file-name" id="lv-thumbnail-name" style="color:var(--muted);font-style:italic"></span>
     </div>
 
     <div class="drop-zone" id="dz-lv-img">

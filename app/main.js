@@ -429,9 +429,9 @@ ipcMain.handle('build:book', async (event, opts = {}) => {
   const def = defaultSettings();
   const pageSize     = opts.pageSize     || s.pageSize || def.pageSize;
   const layout       = opts.layout       || s.layout   || def.layout;
-  const fontSizeCover  = opts.fontSizeCover  || 90;
-  const fontSizeStory  = opts.fontSizeStory  || 76;
-  const fontSizeLast   = opts.fontSizeLast   || 60;
+  const fontSizeCover  = opts.fontSizeCover  || 95;
+  const fontSizeStory  = opts.fontSizeStory  || 95;
+  const fontSizeLast   = opts.fontSizeLast   || 65;
   const textColorCover = opts.textColorCover || '#000000';
   const textColorStory = opts.textColorStory || '#000000';
   const textColorLast  = opts.textColorLast  || '#000000';
@@ -529,7 +529,7 @@ ipcMain.handle('lyrics:copy-images-ordered', (_, orderedPaths) => {
 ipcMain.handle('build:lyrics-video', async (event, opts) => {
   const { lyricsText, audioPath,
           highlightColor, highlightStyle, musicVolume, sectionXfade,
-          landscape, portrait } = opts;
+          shortsThumbnailPath, landscape, portrait } = opts;
 
   const outputDir  = path.join(DATA_ROOT, 'output');
   const imageDir   = path.join(DATA_ROOT, 'input', 'lyrics-images');
@@ -551,6 +551,7 @@ ipcMain.handle('build:lyrics-video', async (event, opts) => {
     HIGHLIGHT_STYLE: highlightStyle || 'box',
     MUSIC_VOLUME:    String(musicVolume  ?? 1.0),
     SECTION_XFADE_S: String(sectionXfade ?? 0.4),
+    ...(shortsThumbnailPath ? { SHORTS_THUMBNAIL_PATH: shortsThumbnailPath } : {}),
     LAND_IMG_RATIO:  String(land.imgRatio ?? 0.6),
     LAND_FONT:       String(land.font     ?? 48),
     LAND_TEXT_COLOR: land.textColor || '#000000',
