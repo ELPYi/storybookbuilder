@@ -6,17 +6,21 @@ let imagesDirPath = null;
 let orderedImages = [];         // [{ name, path, isNumbered }] in user's chosen order
 
 // Font size maxima — not persisted, reset to defaults each session
-let fontSizeCover = 90;
-let fontSizeStory = 76;
-let fontSizeLast  = 60;
+let fontSizeCover = 95;
+let fontSizeStory = 95;
+let fontSizeLast  = 65;
+
+// Convert internal units to Google Docs pt equivalent (95 internal = 16pt)
+const toGdPt = v => Math.round(v * 16 / 95);
+const fontLabel = v => `${v}  (≈ ${toGdPt(v)}pt)`;
 
 // Text colors — not persisted, reset to defaults each session
 let textColorCover = '#000000';
 let textColorStory = '#000000';
 let textColorLast  = '#000000';
 
-// Bleed (inches) — persisted in settings
-let bleedIn = 0.125;
+// Margin (inches) — persisted in settings
+let marginIn = 0.125;
 
 // Book text area background — persisted in settings
 let textBgColor = '#ffffff';
@@ -37,6 +41,14 @@ const CANVAS_DISPLAY_W = 380;
 const SNAP_THRESHOLD   = 8;      // px distance within which a snap fires
 let   snapEnabled      = true;
 
+// Returns margin width in preview display pixels.
+function getMarginPx() {
+  const DPI = 300;
+  const { width, unit } = pageSize;
+  const widthInches = unit === 'cm' ? width / 2.54 : unit === 'px' ? width / DPI : width;
+  return Math.round(marginIn / widthInches * CANVAS_DISPLAY_W);
+}
+
 let pageSize = { width: 8.5, height: 8.5, unit: 'in' };
 let layout   = {
   imageBox: { x: 0.03, y: 0.03, w: 0.94, h: 0.56 },
@@ -52,10 +64,11 @@ function pageToPx() {
   return { w: Math.round(width * DPI), h: Math.round(height * DPI) };
 }
 
-// Guide positions: canvas edges + center + the other box's edges + center
+// Guide positions: canvas edges + margin lines + center + the other box's edges + center
 function guidePositions(otherEl, cW, cH) {
-  const gx = [0, cW / 2, cW];
-  const gy = [0, cH / 2, cH];
+  const mPx = getMarginPx();
+  const gx = mPx > 0 ? [0, mPx, cW / 2, cW - mPx, cW] : [0, cW / 2, cW];
+  const gy = mPx > 0 ? [0, mPx, cH / 2, cH - mPx, cH] : [0, cH / 2, cH];
   if (otherEl) {
     const ol = parseInt(otherEl.style.left)   || 0;
     const ot = parseInt(otherEl.style.top)    || 0;
@@ -131,6 +144,14 @@ function getCanvasDisplayH() {
   return Math.round(CANVAS_DISPLAY_W * (pageSize.height / pageSize.width));
 }
 
+// Draws a subtle inset ring on the canvas showing the safe-content margin.
+function updateMarginOverlay() {
+  const mPx = getMarginPx();
+  layoutCanvas.style.boxShadow = mPx > 0
+    ? `inset 0 0 0 ${mPx}px rgba(100,140,220,0.35), 0 2px 12px rgba(0,0,0,.12)`
+    : '0 2px 12px rgba(0,0,0,.12)';
+}
+
 function boxToPixels(box) {
   const cH = getCanvasDisplayH();
   return {
@@ -151,6 +172,10 @@ function pixelsToBox(px) {
   };
 }
 
+function pixelsToBoxForKey(px, _key) {
+  return pixelsToBox(px);
+}
+
 function applyLayoutToCanvas() {
   const cH = getCanvasDisplayH();
   layoutCanvas.style.width  = CANVAS_DISPLAY_W + 'px';
@@ -163,6 +188,7 @@ function applyLayoutToCanvas() {
     el.style.width  = px.width  + 'px';
     el.style.height = px.height + 'px';
   }
+  updateMarginOverlay();
 }
 
 // ── Drag & resize ──
@@ -269,12 +295,12 @@ document.addEventListener('mousemove', e => {
 document.addEventListener('mouseup', () => {
   hideGuides();
   if (drag) {
-    layout[drag.key] = pixelsToBox(readPx(drag.el));
+    layout[drag.key] = pixelsToBoxForKey(readPx(drag.el), drag.key);
     drag = null;
     saveLayoutSettings();
   }
   if (resz) {
-    layout[resz.key] = pixelsToBox(readPx(resz.el));
+    layout[resz.key] = pixelsToBoxForKey(readPx(resz.el), resz.key);
     resz = null;
     saveLayoutSettings();
     if (parsedPages[previewPageIndex]) {
@@ -291,7 +317,7 @@ function onPageSizeChange() {
     height: parseFloat(pageSizeHEl.value)  || 8.5,
     unit:   pageSizeUEl.value,
   };
-  applyLayoutToCanvas();
+  applyLayoutToCanvas(); // calls updateMarginOverlay internally
   saveLayoutSettings();
 }
 pageSizeWEl.addEventListener('change', onPageSizeChange);
@@ -321,7 +347,7 @@ const fontLastValEl  = document.getElementById('font-last-val');
 
 fontCoverEl.addEventListener('input', () => {
   fontSizeCover = parseInt(fontCoverEl.value);
-  fontCoverValEl.textContent = fontSizeCover;
+  fontCoverValEl.textContent = fontLabel(fontSizeCover);
   if (parsedPages[previewPageIndex]) {
     const p = parsedPages[previewPageIndex];
     fitTextPreview(p.number === 1, previewPageIndex === parsedPages.length - 1);
@@ -330,7 +356,7 @@ fontCoverEl.addEventListener('input', () => {
 
 fontStoryEl.addEventListener('input', () => {
   fontSizeStory = parseInt(fontStoryEl.value);
-  fontStoryValEl.textContent = fontSizeStory;
+  fontStoryValEl.textContent = fontLabel(fontSizeStory);
   if (parsedPages[previewPageIndex]) {
     const p = parsedPages[previewPageIndex];
     fitTextPreview(p.number === 1, previewPageIndex === parsedPages.length - 1);
@@ -339,7 +365,7 @@ fontStoryEl.addEventListener('input', () => {
 
 fontLastEl.addEventListener('input', () => {
   fontSizeLast = parseInt(fontLastEl.value);
-  fontLastValEl.textContent = fontSizeLast;
+  fontLastValEl.textContent = fontLabel(fontSizeLast);
   if (parsedPages[previewPageIndex]) {
     const p = parsedPages[previewPageIndex];
     fitTextPreview(p.number === 1, previewPageIndex === parsedPages.length - 1);
@@ -384,7 +410,7 @@ textColorLastEl.addEventListener('input', () => {
 async function saveLayoutSettings() {
   settings.pageSize    = pageSize;
   settings.layout      = layout;
-  settings.bleedIn     = bleedIn;
+  settings.bleedIn     = marginIn;
   settings.textBgColor = textBgColor;
   settings.landscape   = landscapeSettings;
   settings.shorts      = shortsSettings;
@@ -399,8 +425,8 @@ function initLayoutEditor() {
     pageSizeUEl.value = pageSize.unit;
   }
   if (settings.bleedIn != null) {
-    bleedIn = settings.bleedIn;
-    document.getElementById('page-bleed').value = bleedIn;
+    marginIn = settings.bleedIn;
+    document.getElementById('page-bleed').value = marginIn;
   }
   if (settings.textBgColor != null) {
     textBgColor = settings.textBgColor;
@@ -432,7 +458,8 @@ document.querySelectorAll('.layout-tab-btn').forEach(btn => {
 
 // Bleed input
 document.getElementById('page-bleed').addEventListener('change', () => {
-  bleedIn = parseFloat(document.getElementById('page-bleed').value) || 0.125;
+  marginIn = parseFloat(document.getElementById('page-bleed').value) || 0.125;
+  updateMarginOverlay();
   saveLayoutSettings();
 });
 
@@ -892,6 +919,16 @@ function renderSorter() {
   sorterCount.textContent = `${orderedImages.length} image${orderedImages.length !== 1 ? 's' : ''}`;
   updateImagePreview();
 
+  if (orderedImages.length === 0) {
+    imageSorterEl.innerHTML = `
+      <div class="img-empty-state">
+        <div class="img-empty-icon">📷</div>
+        <div class="img-empty-title">No images added</div>
+        <div class="img-empty-subtitle">Drag and drop or use the file picker to get started</div>
+      </div>`;
+    return;
+  }
+
   orderedImages.forEach((img, idx) => {
     const item = document.createElement('div');
     item.className = 'img-item';
@@ -907,6 +944,37 @@ function renderSorter() {
       </div>
     `;
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'img-delete-btn';
+    deleteBtn.title = 'Remove image';
+    deleteBtn.innerHTML = '🗑';
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (deleteBtn.classList.contains('confirming')) {
+        const currentIdx = orderedImages.findIndex(i => i.path === item.dataset.path);
+        if (currentIdx !== -1) orderedImages.splice(currentIdx, 1);
+        item.remove();
+        sorterCount.textContent = `${orderedImages.length} image${orderedImages.length !== 1 ? 's' : ''}`;
+        imageSorterEl.querySelectorAll('.img-item').forEach((el, i) => {
+          el.querySelector('.page-badge').textContent = `P${i + 1}`;
+        });
+        updateImagePreview();
+        if (orderedImages.length === 0) renderSorter();
+      } else {
+        deleteBtn.classList.add('confirming');
+        deleteBtn.innerHTML = '✓';
+        deleteBtn.title = 'Click again to confirm removal';
+      }
+    });
+
+    item.addEventListener('mouseleave', () => {
+      deleteBtn.classList.remove('confirming');
+      deleteBtn.innerHTML = '🗑';
+      deleteBtn.title = 'Remove image';
+    });
+
+    item.appendChild(deleteBtn);
     item.addEventListener('dragstart', onDragStart);
     item.addEventListener('dragend',   onDragEnd);
     imageSorterEl.appendChild(item);
@@ -1112,7 +1180,7 @@ btnBook.addEventListener('click', async () => {
     });
 
     await window.api.buildBook({
-      pageSize, layout, bleedIn, textBgColor,
+      pageSize, layout, bleedIn: marginIn, textBgColor,
       fontSizeCover, fontSizeStory, fontSizeLast,
       textColorCover, textColorStory, textColorLast,
     });
@@ -1346,9 +1414,10 @@ document.querySelectorAll('.main-nav-btn').forEach(btn => {
 
 // ─── Lyrics Video Builder ──────────────────────────────────────────────────────
 
-let lvAudioPath     = null;
-let lvImagesDirPath = null;
-let lvOrderedImages = [];
+let lvAudioPath      = null;
+let lvImagesDirPath  = null;
+let lvOrderedImages  = [];
+let lvThumbnailPath  = null;
 
 // Format settings (mirrors landscapeSettings / shortsSettings pattern)
 let lvLandSettings = { imgRatio: 0.6, font: 48, textColor: '#000000', textBg: '#ffffff' };
@@ -1397,6 +1466,16 @@ document.getElementById('btn-lv-audio').addEventListener('click', async () => {
   }
 });
 
+document.getElementById('btn-lv-thumbnail').addEventListener('click', async () => {
+  const result = await window.api.openFile([
+    { name: 'Image Files', extensions: ['png', 'jpg', 'jpeg', 'webp'] },
+  ]);
+  if (result) {
+    lvThumbnailPath = result;
+    document.getElementById('lv-thumbnail-name').textContent = result.split(/[\\/]/).pop();
+  }
+});
+
 // ─── Lyrics Video image folder drop zone & sorter ──────────────────────────────
 const dzLvImg       = document.getElementById('dz-lv-img');
 const dzLvImgStatus = document.getElementById('dz-lv-img-status');
@@ -1420,6 +1499,17 @@ let lvPlaceholder = null;
 function renderLvSorter() {
   lvSorterEl.innerHTML = '';
   lvSorterCount.textContent = `${lvOrderedImages.length} image${lvOrderedImages.length !== 1 ? 's' : ''}`;
+
+  if (lvOrderedImages.length === 0) {
+    lvSorterEl.innerHTML = `
+      <div class="img-empty-state">
+        <div class="img-empty-icon">📷</div>
+        <div class="img-empty-title">No images added</div>
+        <div class="img-empty-subtitle">Drag and drop or use the file picker to get started</div>
+      </div>`;
+    return;
+  }
+
   lvOrderedImages.forEach((img, idx) => {
     const item = document.createElement('div');
     item.className  = 'img-item';
@@ -1431,6 +1521,37 @@ function renderLvSorter() {
         <span class="img-name" title="${img.name}">${img.name}</span>
         <span class="page-badge">${idx + 1}</span>
       </div>`;
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'img-delete-btn';
+    deleteBtn.title = 'Remove image';
+    deleteBtn.innerHTML = '🗑';
+
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (deleteBtn.classList.contains('confirming')) {
+        const currentIdx = lvOrderedImages.findIndex(i => i.path === item.dataset.path);
+        if (currentIdx !== -1) lvOrderedImages.splice(currentIdx, 1);
+        item.remove();
+        lvSorterCount.textContent = `${lvOrderedImages.length} image${lvOrderedImages.length !== 1 ? 's' : ''}`;
+        lvSorterEl.querySelectorAll('.img-item').forEach((el, i) => {
+          el.querySelector('.page-badge').textContent = `${i + 1}`;
+        });
+        if (lvOrderedImages.length === 0) renderLvSorter();
+      } else {
+        deleteBtn.classList.add('confirming');
+        deleteBtn.innerHTML = '✓';
+        deleteBtn.title = 'Click again to confirm removal';
+      }
+    });
+
+    item.addEventListener('mouseleave', () => {
+      deleteBtn.classList.remove('confirming');
+      deleteBtn.innerHTML = '🗑';
+      deleteBtn.title = 'Remove image';
+    });
+
+    item.appendChild(deleteBtn);
     item.addEventListener('dragstart', onLvDragStart);
     item.addEventListener('dragend',   onLvDragEnd);
     lvSorterEl.appendChild(item);
@@ -1631,13 +1752,14 @@ btnLvBuild.addEventListener('click', async () => {
     await window.api.copyLyricsImagesOrdered(lvOrderedImages.map(i => i.path));
     await window.api.buildLyricsVideo({
       lyricsText,
-      audioPath:      lvAudioPath,
-      highlightColor: lvHighlightColorEl.value,
-      highlightStyle: document.getElementById('lv-highlight-style').value,
-      musicVolume:    parseFloat(lvMusicVolEl.value),
-      sectionXfade:   parseFloat(lvXfadeEl.value),
-      landscape:      lvLandSettings,
-      portrait:       lvPortSettings,
+      audioPath:           lvAudioPath,
+      highlightColor:      lvHighlightColorEl.value,
+      highlightStyle:      document.getElementById('lv-highlight-style').value,
+      musicVolume:         parseFloat(lvMusicVolEl.value),
+      sectionXfade:        parseFloat(lvXfadeEl.value),
+      shortsThumbnailPath: lvThumbnailPath,
+      landscape:           lvLandSettings,
+      portrait:            lvPortSettings,
     });
     lvBar.classList.add('success');
     setProgress(lvBar, lvProgressPct, lvProgressLbl, 100, 'Done!');

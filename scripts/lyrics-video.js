@@ -67,6 +67,9 @@ const HIGHLIGHT_STYLE  = process.env.HIGHLIGHT_STYLE  || 'box';
 const KARAOKE_COLOR    = process.env.KARAOKE_COLOR    || '#FF8800';
 const MUSIC_VOLUME     = parseFloat(process.env.MUSIC_VOLUME    || '1.0');
 
+const SHORTS_THUMBNAIL_PATH = process.env.SHORTS_THUMBNAIL_PATH || '';
+const THUMBNAIL_SECS        = 2.0;
+
 // ─── FFmpeg helpers ────────────────────────────────────────────────────────────
 
 function ffmpeg(...args) {
@@ -86,12 +89,12 @@ async function getMediaDuration(filePath) {
 }
 
 // ─── Lyrics parser ─────────────────────────────────────────────────────────────
-// Splits lyrics into sections.  Labels like "(Verse 1)" or "(Chorus)" are
+// Splits lyrics into sections.  Labels like "[Verse 1]", "(Chorus)", or "{Bridge}" are
 // stripped — only the lyric text is kept.
 // Returns [{ label: string, text: string }]
 
 function parseLyrics(raw) {
-  const sectionRe = /^\(([^)]+)\)\s*/;
+  const sectionRe = /^[\[({]([^\]})]+)[\]})]\s*/;
   const sections  = [];
   let currentLabel = '';
   let lines        = [];
@@ -123,17 +126,13 @@ function parseLyrics(raw) {
 // Runs faster-whisper on the audio file and caches the result as a JSON sidecar.
 // Returns [{word, start, end}] for the entire song.
 
-async function getWordTimings(audioPath, cacheDir) {
-  const base      = path.basename(audioPath, path.extname(audioPath));
-  const jsonPath  = path.join(cacheDir, `${base}_timings.json`);
-  if (fs.existsSync(jsonPath)) {
-    try { return JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch {}
-  }
+async function getWordTimings(audioPath, cacheDir, lyricsText) {
+  const base     = path.basename(audioPath, path.extname(audioPath));
+  const jsonPath = path.join(cacheDir, `${base}_timings.json`);
   console.log('Aligning lyrics to audio with Whisper (this may take a moment)...');
-  await execFileAsync(
-    'py', ['-3.11', path.join(__dirname, 'whisper_align.py'), audioPath, jsonPath],
-    { maxBuffer: 20 * 1024 * 1024 }
-  );
+  const args = ['-3.11', path.join(__dirname, 'whisper_align.py'), audioPath, jsonPath];
+  if (lyricsText) args.push(lyricsText);
+  await execFileAsync('py', args, { maxBuffer: 20 * 1024 * 1024 });
   return JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
 }
 
@@ -154,10 +153,10 @@ function normWord(w) {
 function mapTimingsToSections(sections, allTimings, songDuration) {
   const sectionWordTimings = sections.map(() => []);
   let tIdx = 0;
-  let consecutiveMisses = 0;
 
   for (let sectionIdx = 0; sectionIdx < sections.length; sectionIdx++) {
     const lyricWords = sections[sectionIdx].text.split(/\s+/).filter(Boolean);
+    let consecutiveMisses = 0;
     for (const word of lyricWords) {
       const lw = normWord(word);
       if (!lw) {
@@ -261,62 +260,53 @@ function wrapWords(text, maxCharsPerLine) {
 }
 
 // Returns [{x, y, w, h, word, fontSize}] in canvas pixel coords.
+// Honors input line breaks exactly — font shrinks until every line fits without wrapping.
 function calcWordBoxes(text, layout, startFontSize) {
   const { x: txtX, y: txtY, w: W, h: H } = layout;
-  const SCALE_V   = W / 2550;
-  const mX        = Math.round(W * 0.04);
-  const mY        = Math.round(H * 0.08);
-  const availW    = W - mX * 2;
-  const availH    = H - mY * 2;
-  const GAP_RATIO = 0.4;
-  const minFont   = Math.max(12, Math.round(18 * SCALE_V));
-  const step      = Math.max(2,  Math.round(4  * SCALE_V));
-  let fontSize    = startFontSize ?? Math.round(76 * SCALE_V);
+  const SCALE_V = W / 2550;
+  const mX      = Math.round(W * 0.04);
+  const mY      = Math.round(H * 0.08);
+  const availW  = W - mX * 2;
+  const availH  = H - mY * 2;
+  const minFont = Math.max(12, Math.round(18 * SCALE_V));
+  const step    = Math.max(2,  Math.round(4  * SCALE_V));
+  let fontSize  = startFontSize ?? Math.round(76 * SCALE_V);
 
-  const coupletLines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const hasCouplet   = coupletLines.length >= 2;
-  let lineHeight, lineGroups, totalH;
+  const inputLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let lineHeight;
 
   while (fontSize >= minFont) {
     lineHeight = Math.round(fontSize * 1.35);
-    const maxChars = Math.floor(availW / (fontSize * 0.55));
-    lineGroups = coupletLines.map(cl => wrapWords(cl, maxChars));
-    const totalLines = lineGroups.reduce((s, g) => s + g.length, 0);
-    const gapTotal   = hasCouplet ? (lineGroups.length - 1) * Math.round(lineHeight * GAP_RATIO) : 0;
-    totalH = totalLines * lineHeight + gapTotal;
-    if (totalH <= availH) break;
+    const maxLineW = Math.max(...inputLines.map(l => arialPx(l, fontSize)));
+    if (maxLineW <= availW && inputLines.length * lineHeight <= availH) break;
     fontSize -= step;
   }
 
-  const gapPx  = hasCouplet ? Math.round(lineHeight * GAP_RATIO) : 0;
-  const startY = mY + Math.round((availH - totalH) / 2) + fontSize;
-  const spaceW = ARIAL_WIDTHS[' '] * fontSize;
-
-  const boxes = [];
+  const totalH   = inputLines.length * lineHeight;
+  const startY   = mY + Math.round((availH - totalH) / 2) + fontSize;
+  const spaceW   = ARIAL_WIDTHS[' '] * fontSize;
+  const boxes    = [];
   let y = startY;
-  lineGroups.forEach((group, gi) => {
-    group.forEach(lineWords => {
-      const wordPxWidths = lineWords.map(w => arialPx(w, fontSize));
-      const linePixW = wordPxWidths.reduce((s, w) => s + w, 0)
-                     + Math.max(0, lineWords.length - 1) * spaceW;
-      const lineStartX = (W / 2) - (linePixW / 2);
-      let xOff = 0;
-      for (let wi = 0; wi < lineWords.length; wi++) {
-        const wPx = wordPxWidths[wi];
-        boxes.push({
-          x: Math.round(txtX + lineStartX + xOff),
-          y: Math.round(txtY + y - fontSize),
-          w: Math.round(wPx),
-          h: Math.round(fontSize * 1.2),
-          word: lineWords[wi],
-          fontSize,
-        });
-        xOff += wPx + spaceW;
-      }
-      y += lineHeight;
-    });
-    if (gi < lineGroups.length - 1) y += gapPx;
-  });
+
+  for (const line of inputLines) {
+    const words        = line.split(/\s+/).filter(Boolean);
+    const wordPxWidths = words.map(w => arialPx(w, fontSize));
+    const linePixW     = wordPxWidths.reduce((s, w) => s + w, 0) + Math.max(0, words.length - 1) * spaceW;
+    const lineStartX   = (W / 2) - (linePixW / 2);
+    let xOff = 0;
+    for (let wi = 0; wi < words.length; wi++) {
+      boxes.push({
+        x: Math.round(txtX + lineStartX + xOff),
+        y: Math.round(txtY + y - fontSize),
+        w: Math.round(wordPxWidths[wi]),
+        h: Math.round(fontSize * 1.2),
+        word: words[wi],
+        fontSize,
+      });
+      xOff += wordPxWidths[wi] + spaceW;
+    }
+    y += lineHeight;
+  }
 
   return boxes;
 }
@@ -384,39 +374,30 @@ function buildTextSvg(text, W, H, startFontSize, textColor) {
   const mY = Math.round(H * 0.08);
   const availW = W - mX * 2;
   const availH = H - mY * 2;
-  const GAP_RATIO = 0.4;
   const SCALE_V = W / 2550;
   const minFont = Math.max(12, Math.round(18 * SCALE_V));
   const step    = Math.max(2,  Math.round(4  * SCALE_V));
   let fontSize  = startFontSize;
 
-  const coupletLines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const hasCouplet   = coupletLines.length >= 2;
-  let lineHeight, lineGroups, totalH;
+  const inputLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let lineHeight;
 
   while (fontSize >= minFont) {
     lineHeight = Math.round(fontSize * 1.35);
-    const maxChars = Math.floor(availW / (fontSize * 0.55));
-    lineGroups = coupletLines.map(cl => wrapWords(cl, maxChars));
-    const totalLines = lineGroups.reduce((s, g) => s + g.length, 0);
-    const gapTotal   = hasCouplet ? (lineGroups.length - 1) * Math.round(lineHeight * GAP_RATIO) : 0;
-    totalH = totalLines * lineHeight + gapTotal;
-    if (totalH <= availH) break;
+    const maxLineW = Math.max(...inputLines.map(l => arialPx(l, fontSize)));
+    if (maxLineW <= availW && inputLines.length * lineHeight <= availH) break;
     fontSize -= step;
   }
 
-  const gapPx  = hasCouplet ? Math.round(lineHeight * GAP_RATIO) : 0;
+  const totalH = inputLines.length * lineHeight;
   const startY = mY + Math.round((availH - totalH) / 2) + fontSize;
   const tspans = [];
   let y = startY;
 
-  lineGroups.forEach((group, gi) => {
-    group.forEach(lineWords => {
-      tspans.push(`<tspan x="${W / 2}" y="${y}">${safeXml(lineWords.join(' '))}</tspan>`);
-      y += lineHeight;
-    });
-    if (gi < lineGroups.length - 1) y += gapPx;
-  });
+  for (const line of inputLines) {
+    tspans.push(`<tspan x="${W / 2}" y="${y}">${safeXml(line)}</tspan>`);
+    y += lineHeight;
+  }
 
   return Buffer.from(
     `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">` +
@@ -569,33 +550,56 @@ async function buildImageSlideshow(imagePaths, songDuration, W, H, outPath) {
     return;
   }
 
-  const inputs = [];
-  for (let i = 0; i < N - 1; i++) {
-    inputs.push('-loop', '1', '-t', String(T + xfadeDur), '-i', imagePaths[i]);
-  }
-  inputs.push('-loop', '1', '-t', String(T), '-i', imagePaths[N - 1]);
+  // Build one short clip per image, then join them pairwise with xfade.
+  // A single filter_complex with N inputs all at once becomes very slow/stuck
+  // for large N because FFmpeg must buffer all streams simultaneously.
+  const tmpDir = os.tmpdir();
+  const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-  const filterParts = [];
+  const clipPaths = [];
+  const clipDurs  = [];
   for (let i = 0; i < N; i++) {
-    filterParts.push(`[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}[v${i}]`);
+    const d = i < N - 1 ? T + xfadeDur : T;
+    const p = path.join(tmpDir, `lv_img_${tag}_${i}.mp4`);
+    process.stdout.write(`  image ${i + 1}/${N}... `);
+    await ffmpeg(
+      '-loop', '1', '-i', imagePaths[i],
+      '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`,
+      '-t', String(d),
+      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', p
+    );
+    console.log('ok');
+    clipPaths.push(p);
+    clipDurs.push(d);
   }
 
-  let prev = '[v0]';
-  let offset = 0;
-  for (let i = 0; i < N - 1; i++) {
-    offset += T;
-    const out = i === N - 2 ? '[xfinal]' : `[x${i + 1}]`;
-    filterParts.push(`${prev}[v${i + 1}]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}${out}`);
-    prev = out;
-  }
+  let prevPath = clipPaths[0];
+  let prevDur  = clipDurs[0];
 
-  await ffmpeg(
-    ...inputs,
-    '-filter_complex', filterParts.join(';'),
-    '-map', '[xfinal]',
-    '-t', String(songDuration),
-    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-an', outPath
-  );
+  for (let i = 1; i < N; i++) {
+    const nextPath = clipPaths[i];
+    const nextDur  = clipDurs[i];
+    const offset   = prevDur - xfadeDur;
+    const isLast   = i === N - 1;
+    const stepOut  = isLast ? outPath : path.join(tmpDir, `lv_join_${tag}_${i}.mp4`);
+
+    process.stdout.write(`  joining ${i}/${N - 1}... `);
+    await ffmpeg(
+      '-i', prevPath,
+      '-i', nextPath,
+      '-filter_complex',
+        `[0:v][1:v]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}[vout]`,
+      '-map', '[vout]',
+      '-c:v', 'libx264', '-preset', isLast ? 'fast' : 'ultrafast', '-pix_fmt', 'yuv420p', '-an',
+      stepOut
+    );
+    console.log('ok');
+
+    try { fs.unlinkSync(prevPath); } catch {}
+    try { fs.unlinkSync(nextPath); } catch {}
+    prevPath = stepOut;
+    prevDur  = prevDur - xfadeDur + nextDur;
+  }
 }
 
 // Overlays slideshowPath onto videoPath at position (x, y), preserving audio.
@@ -617,6 +621,28 @@ async function compositeSlideshow(videoPath, slideshowPath, x, y, outPath) {
   }
   try { fs.unlinkSync(outPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   fs.renameSync(tmpPath, outPath);
+}
+
+// ─── Shorts thumbnail frame appender ──────────────────────────────────────────
+
+async function appendThumbnailFrame(portraitPath, thumbnailImgPath) {
+  const tmpPath = portraitPath.replace('.mp4', '_thumb_tmp.mp4');
+  await ffmpeg(
+    '-i', portraitPath,
+    '-loop', '1', '-t', String(THUMBNAIL_SECS), '-i', thumbnailImgPath,
+    '-f', 'lavfi', '-t', String(THUMBNAIL_SECS), '-i', `anullsrc=r=44100:cl=stereo`,
+    '-filter_complex',
+      `[0:v]setsar=1[v0];` +
+      `[1:v]scale=${PORT_W}:${PORT_H}:force_original_aspect_ratio=increase,` +
+      `crop=${PORT_W}:${PORT_H},setsar=1[thumb];` +
+      `[thumb][2:a][v0][0:a]concat=n=2:v=1:a=1[vout][aout]`,
+    '-map', '[vout]', '-map', '[aout]',
+    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '192k',
+    tmpPath
+  );
+  try { fs.unlinkSync(portraitPath); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  fs.renameSync(tmpPath, portraitPath);
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
@@ -663,7 +689,8 @@ async function main() {
   console.log(`Parsed ${sections.length} sections.`);
 
   // ── Align timings ─────────────────────────────────────────────────────────────
-  const allTimings   = await getWordTimings(audioPath, outputDir);
+  const lyricsText   = sections.map(s => s.text).join('\n');
+  const allTimings   = await getWordTimings(audioPath, outputDir, lyricsText);
   const songDuration = await getMediaDuration(audioPath);
   const richSections = mapTimingsToSections(sections, allTimings, songDuration);
 
@@ -746,6 +773,14 @@ async function main() {
 
   try { fs.unlinkSync(landSlidePath); } catch {}
   try { fs.unlinkSync(portSlidePath); } catch {}
+
+  // Thumbnail must be prepended after slideshow compositing so the still frame
+  // doesn't get the slideshow overlaid on top of it.
+  if (SHORTS_THUMBNAIL_PATH && fs.existsSync(SHORTS_THUMBNAIL_PATH)) {
+    console.log('\nPrepending thumbnail frame to 9:16 Shorts video...');
+    await appendThumbnailFrame(portOutPath, SHORTS_THUMBNAIL_PATH);
+    console.log(`Done  →  ${portOutPath}`);
+  }
 
   // ── Cleanup ────────────────────────────────────────────────────────────────────
   for (const f of [...tmpFrames, ...landClips, ...portClips]) {
