@@ -468,7 +468,7 @@ async function buildClip(framePath, duration, canvasW, canvasH, vFilter, highlig
       '-filter_complex_script', filterScript,
       '-map', '[vout]',
       '-t', String(duration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p1', '-pix_fmt', 'yuv420p',
       '-an', outPath
     );
   } finally {
@@ -506,7 +506,7 @@ async function assembleVideo(clips, audioPath, songDuration, outPath) {
       ...inputs,
       '-filter_complex', vFilters.join(';'),
       '-map', '[vfinal]',
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-an', tmpVideo
     );
   }
@@ -545,60 +545,74 @@ async function buildImageSlideshow(imagePaths, songDuration, W, H, outPath) {
       '-loop', '1', '-i', imagePaths[0],
       '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`,
       '-t', String(songDuration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', '-an', outPath
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p', '-an', outPath
     );
     return;
   }
 
-  // Build one short clip per image, then join them pairwise with xfade.
-  // A single filter_complex with N inputs all at once becomes very slow/stuck
-  // for large N because FFmpeg must buffer all streams simultaneously.
   const tmpDir = os.tmpdir();
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-  const clipPaths = [];
-  const clipDurs  = [];
-  for (let i = 0; i < N; i++) {
-    const d = i < N - 1 ? T + xfadeDur : T;
-    const p = path.join(tmpDir, `lv_img_${tag}_${i}.mp4`);
-    process.stdout.write(`  image ${i + 1}/${N}... `);
-    await ffmpeg(
-      '-loop', '1', '-i', imagePaths[i],
+  // ── Encode all image clips in parallel ────────────────────────────────────
+  const clipMetas = imagePaths.map((src, i) => ({
+    src,
+    path: path.join(tmpDir, `lv_img_${tag}_${i}.mp4`),
+    dur:  i < N - 1 ? T + xfadeDur : T,
+  }));
+  process.stdout.write(`  encoding ${N} clips in parallel... `);
+  await Promise.all(clipMetas.map(m =>
+    ffmpeg(
+      '-loop', '1', '-i', m.src,
       '-vf', `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}`,
-      '-t', String(d),
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-an', p
-    );
+      '-t', String(m.dur),
+      '-c:v', 'h264_nvenc', '-preset', 'p1', '-pix_fmt', 'yuv420p', '-an', m.path
+    )
+  ));
+  console.log('ok');
+
+  // ── Binary tree xfade join ────────────────────────────────────────────────
+  // Each level joins all pairs in parallel, halving the count each time.
+  // O(N log N) total encode vs O(N²) for the old linear chain.
+  let items = clipMetas.map(m => ({ path: m.path, dur: m.dur }));
+  let joinIdx = 0;
+
+  while (items.length > 1) {
+    const nextItems = [];
+    const tasks = [];
+
+    for (let i = 0; i < items.length; i += 2) {
+      if (i + 1 >= items.length) {
+        nextItems.push(items[i]);
+        continue;
+      }
+      const a = items[i];
+      const b = items[i + 1];
+      const isFinalJoin = items.length === 2;
+      const joinOut = isFinalJoin ? outPath : path.join(tmpDir, `lv_join_${tag}_${joinIdx++}.mp4`);
+      const outDur  = a.dur + b.dur - xfadeDur;
+      const offset  = a.dur - xfadeDur;
+      const pathA = a.path, pathB = b.path;
+
+      tasks.push(
+        ffmpeg(
+          '-i', pathA, '-i', pathB,
+          '-filter_complex',
+            `[0:v][1:v]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}[vout]`,
+          '-map', '[vout]',
+          '-c:v', 'h264_nvenc', '-preset', isFinalJoin ? 'p4' : 'p1', '-pix_fmt', 'yuv420p', '-an',
+          joinOut
+        ).then(() => {
+          try { fs.unlinkSync(pathA); } catch {}
+          try { fs.unlinkSync(pathB); } catch {}
+        })
+      );
+      nextItems.push({ path: joinOut, dur: outDur });
+    }
+
+    process.stdout.write(`  joining ${tasks.length} pair(s)... `);
+    await Promise.all(tasks);
     console.log('ok');
-    clipPaths.push(p);
-    clipDurs.push(d);
-  }
-
-  let prevPath = clipPaths[0];
-  let prevDur  = clipDurs[0];
-
-  for (let i = 1; i < N; i++) {
-    const nextPath = clipPaths[i];
-    const nextDur  = clipDurs[i];
-    const offset   = prevDur - xfadeDur;
-    const isLast   = i === N - 1;
-    const stepOut  = isLast ? outPath : path.join(tmpDir, `lv_join_${tag}_${i}.mp4`);
-
-    process.stdout.write(`  joining ${i}/${N - 1}... `);
-    await ffmpeg(
-      '-i', prevPath,
-      '-i', nextPath,
-      '-filter_complex',
-        `[0:v][1:v]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}[vout]`,
-      '-map', '[vout]',
-      '-c:v', 'libx264', '-preset', isLast ? 'fast' : 'ultrafast', '-pix_fmt', 'yuv420p', '-an',
-      stepOut
-    );
-    console.log('ok');
-
-    try { fs.unlinkSync(prevPath); } catch {}
-    try { fs.unlinkSync(nextPath); } catch {}
-    prevPath = stepOut;
-    prevDur  = prevDur - xfadeDur + nextDur;
+    items = nextItems;
   }
 }
 
@@ -611,7 +625,7 @@ async function compositeSlideshow(videoPath, slideshowPath, x, y, outPath) {
       '-i', slideshowPath,
       '-filter_complex', `[0:v][1:v]overlay=${x}:${y}[vout]`,
       '-map', '[vout]', '-map', '0:a',
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-c:a', 'copy', '-shortest',
       tmpPath
     );
@@ -637,7 +651,7 @@ async function appendThumbnailFrame(portraitPath, thumbnailImgPath) {
       `crop=${PORT_W}:${PORT_H},setsar=1[thumb];` +
       `[thumb][2:a][v0][0:a]concat=n=2:v=1:a=1[vout][aout]`,
     '-map', '[vout]', '-map', '[aout]',
-    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+    '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     tmpPath
   );
@@ -699,50 +713,41 @@ async function main() {
     console.log(`  [${s.label}] ${s.clipStart.toFixed(2)}s → ${s.clipEnd.toFixed(2)}s  (${s.matchedWordCount}/${s.words.length} words matched)`);
   });
 
-  // ── Build landscape clips ──────────────────────────────────────────────────────
-  console.log('\nBuilding landscape (16:9) clips...');
-  const landClips   = [];
-  const landLayout  = { x: LAND_TXT_X, y: LAND_TXT_Y, w: LAND_TXT_W, h: LAND_TXT_H };
-  const tmpFrames   = [];
-
-  for (let i = 0; i < richSections.length; i++) {
-    const s         = richSections[i];
-    const framePath = await buildLandscapeFrame(null, s.text);
-    tmpFrames.push(framePath);
-    const clipPath  = path.join(outputDir, `land_clip_${String(i).padStart(2, '0')}.mp4`);
-    const vFilter   = `scale=${LAND_W}:${LAND_H}`;
-
-    const { filter, wordFiles, overlays } = await buildKaraokeFilter(
-      s.text, s.words, s.clipStart, landLayout, LAND_FONT, LAND_W, LAND_H
-    );
-    process.stdout.write(`  Section ${i + 1}/${richSections.length} [${s.label}]... `);
-    const clipDuration = s.clipDuration + (i < richSections.length - 1 ? SECTION_XFADE_S : 0);
-    await buildClip(framePath, clipDuration, LAND_W, LAND_H, vFilter, filter, overlays, clipPath);
-    for (const wf of wordFiles) try { fs.unlinkSync(wf); } catch {}
-    landClips.push(clipPath);
-    console.log('done');
-  }
-
-  // ── Build portrait clips ───────────────────────────────────────────────────────
-  console.log('\nBuilding portrait (9:16) clips...');
+  // ── Build landscape and portrait clips ────────────────────────────────────────
+  console.log('\nBuilding landscape (16:9) and portrait (9:16) clips...');
+  const landClips  = [];
   const portClips  = [];
+  const landLayout = { x: LAND_TXT_X, y: LAND_TXT_Y, w: LAND_TXT_W, h: LAND_TXT_H };
   const portLayout = { x: PORT_TXT_X, y: PORT_TXT_Y, w: PORT_TXT_W, h: PORT_TXT_H };
+  const tmpFrames  = [];
 
   for (let i = 0; i < richSections.length; i++) {
-    const s         = richSections[i];
-    const framePath = await buildPortraitFrame(null, s.text);
-    tmpFrames.push(framePath);
-    const clipPath  = path.join(outputDir, `port_clip_${String(i).padStart(2, '0')}.mp4`);
-    const vFilter   = `scale=${PORT_W}:${PORT_H}`;
-
-    const { filter, wordFiles, overlays } = await buildKaraokeFilter(
-      s.text, s.words, s.clipStart, portLayout, PORT_FONT, PORT_W, PORT_H
-    );
-    process.stdout.write(`  Section ${i + 1}/${richSections.length} [${s.label}]... `);
+    const s            = richSections[i];
     const clipDuration = s.clipDuration + (i < richSections.length - 1 ? SECTION_XFADE_S : 0);
-    await buildClip(framePath, clipDuration, PORT_W, PORT_H, vFilter, filter, overlays, clipPath);
-    for (const wf of wordFiles) try { fs.unlinkSync(wf); } catch {}
-    portClips.push(clipPath);
+    const landClipPath = path.join(outputDir, `land_clip_${String(i).padStart(2, '0')}.mp4`);
+    const portClipPath = path.join(outputDir, `port_clip_${String(i).padStart(2, '0')}.mp4`);
+
+    process.stdout.write(`  Section ${i + 1}/${richSections.length} [${s.label}]... `);
+
+    const [landFramePath, portFramePath] = await Promise.all([
+      buildLandscapeFrame(null, s.text),
+      buildPortraitFrame(null, s.text),
+    ]);
+    tmpFrames.push(landFramePath, portFramePath);
+
+    const [landKaraoke, portKaraoke] = await Promise.all([
+      buildKaraokeFilter(s.text, s.words, s.clipStart, landLayout, LAND_FONT, LAND_W, LAND_H),
+      buildKaraokeFilter(s.text, s.words, s.clipStart, portLayout, PORT_FONT, PORT_W, PORT_H),
+    ]);
+
+    await Promise.all([
+      buildClip(landFramePath, clipDuration, LAND_W, LAND_H, `scale=${LAND_W}:${LAND_H}`, landKaraoke.filter, landKaraoke.overlays, landClipPath),
+      buildClip(portFramePath, clipDuration, PORT_W, PORT_H, `scale=${PORT_W}:${PORT_H}`, portKaraoke.filter, portKaraoke.overlays, portClipPath),
+    ]);
+
+    for (const wf of [...landKaraoke.wordFiles, ...portKaraoke.wordFiles]) try { fs.unlinkSync(wf); } catch {}
+    landClips.push(landClipPath);
+    portClips.push(portClipPath);
     console.log('done');
   }
 
@@ -751,25 +756,25 @@ async function main() {
   const landOutPath = path.join(outputDir, `${baseName}_16x9.mp4`);
   const portOutPath = path.join(outputDir, `${baseName}_9x16.mp4`);
 
-  console.log('\nAssembling 16:9 landscape video...');
-  await assembleVideo(landClips, audioPath, songDuration, landOutPath);
-  console.log(`Done  →  ${landOutPath}`);
-
-  console.log('Assembling 9:16 portrait video...');
-  await assembleVideo(portClips, audioPath, songDuration, portOutPath);
-  console.log(`Done  →  ${portOutPath}`);
-
-  // ── Build image slideshow and composite onto both videos ───────────────────────
-  console.log(`\nBuilding image slideshow (${imagePaths.length} image${imagePaths.length !== 1 ? 's' : ''})...`);
+  // ── Assemble videos + build both slideshows in parallel ──────────────────────
   const landSlidePath = path.join(outputDir, 'land_slideshow_tmp.mp4');
   const portSlidePath = path.join(outputDir, 'port_slideshow_tmp.mp4');
-  await buildImageSlideshow(imagePaths, songDuration, LAND_IMG_W, LAND_H,    landSlidePath);
-  await buildImageSlideshow(imagePaths, songDuration, PORT_W,     PORT_IMG_H, portSlidePath);
 
-  console.log('Compositing slideshow onto 16:9 video...');
-  await compositeSlideshow(landOutPath, landSlidePath, 0, 0, landOutPath);
-  console.log('Compositing slideshow onto 9:16 video...');
-  await compositeSlideshow(portOutPath, portSlidePath, 0, 0, portOutPath);
+  console.log(`\nAssembling videos and building slideshow (${imagePaths.length} image${imagePaths.length !== 1 ? 's' : ''}) in parallel...`);
+  await Promise.all([
+    assembleVideo(landClips, audioPath, songDuration, landOutPath),
+    assembleVideo(portClips, audioPath, songDuration, portOutPath),
+    buildImageSlideshow(imagePaths, songDuration, LAND_IMG_W, LAND_H,    landSlidePath),
+    buildImageSlideshow(imagePaths, songDuration, PORT_W,     PORT_IMG_H, portSlidePath),
+  ]);
+  console.log(`Done  →  ${landOutPath}, ${portOutPath}`);
+
+  // ── Composite both slideshows in parallel ──────────────────────────────────
+  console.log('Compositing slideshows onto both videos...');
+  await Promise.all([
+    compositeSlideshow(landOutPath, landSlidePath, 0, 0, landOutPath),
+    compositeSlideshow(portOutPath, portSlidePath, 0, 0, portOutPath),
+  ]);
 
   try { fs.unlinkSync(landSlidePath); } catch {}
   try { fs.unlinkSync(portSlidePath); } catch {}

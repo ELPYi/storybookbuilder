@@ -754,26 +754,21 @@ async function main() {
   console.log(`Parsed ${pages.length} pages from book.txt`);
   console.log(`Canvas: ${CANVAS_W}x${CANVAS_H}px (trim: ${PAGE_W}x${PAGE_H}px, bleed: ${BLEED}px each side)`);
 
-  const rendered = [];
-  for (let i = 0; i < pages.length; i++) {
-    const p      = pages[i];
+  const hasPage2 = pages.some(p => p.number === 2);
+  const needsBlankPage = ((pages.length - 1) + (hasPage2 ? 1 : 0)) % 2 === 0;
+  await Promise.all(pages.map(async (p, i) => {
     const isLast = i === pages.length - 1;
-
-    if (isLast && rendered.length % 2 === 0) {
-      rendered.push(await buildBlankPage());
+    if (isLast && needsBlankPage) {
+      await buildBlankPage();
       console.log('Inserted blank page for even-page alignment');
     }
-
-    const out = await buildPage(p, { isLast });
-    rendered.push(out);
+    await buildPage(p, { isLast });
     console.log(`Built page ${String(p.number).padStart(2, '0')}${isLast ? ' (last)' : ''}`);
-
     if (p.number === 2) {
-      const copyrightOut = await buildCopyrightPage();
-      rendered.push(copyrightOut);
+      await buildCopyrightPage();
       console.log('Built copyright page');
     }
-  }
+  }));
 
   console.log('Building DOCX…');
   await buildDocx(pages, slug);

@@ -22,11 +22,21 @@ const fs      = require('fs');
 const path    = require('path');
 const os      = require('os');
 const crypto  = require('crypto');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const sharp   = require('sharp');
 
 const execFileAsync = promisify(execFile);
+
+function spawnAsync(cmd, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+    child.stdout.on('data', d => process.stdout.write(d));
+    child.stderr.on('data', d => process.stderr.write(d));
+    child.on('close', code => code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${code}`)));
+    child.on('error', reject);
+  });
+}
 
 // ─── Config ────────────────────────────────────────────────────────────────────
 // af_heart — warm, natural American female (Kokoro TTS, MIT licensed)
@@ -459,12 +469,15 @@ function calcWordBoxes(text, { bold = false, startFontSize, portLayout } = {}) {
         const word = lineWords[wi];
         const wPx  = wordPxWidths[wi];
         boxes.push({
-          x:        Math.round(txtX + lineStartX + xOff),
-          y:        Math.round(txtY + y - fontSize),
-          w:        Math.round(wPx),
-          h:        Math.round(fontSize * 1.2),
-          word:     word,
-          fontSize: fontSize,
+          x:             Math.round(txtX + lineStartX + xOff),
+          y:             Math.round(txtY + y - fontSize),
+          w:             Math.round(wPx),
+          h:             Math.round(fontSize * 1.2),
+          word:          word,
+          fontSize:      fontSize,
+          lineText:      lineWords.join(' '),
+          lineCenterX:   Math.round(txtX + W / 2),
+          lineBaselineY: Math.round(txtY + y),
         });
         xOff += wPx + spaceW;
       }
@@ -523,54 +536,89 @@ async function buildKaraokeFilter(text, wordTimings, timeOffset, { bold = false,
   const overlays  = [];
   const n = Math.min(wordBoxes.length, wordTimings.length);
 
-  for (let i = 0; i < n; i++) {
-    const box = wordBoxes[i];
-    const tim = wordTimings[i];
-    const t0  = timeOffset + tim.start;
-    const t1  = timeOffset + tim.end;
-    if (t1 <= t0) continue;
-    const enable = `enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`;
+  if (style === 'color') {
+    const svgFrameW = canvasW || (portLayout ? PORT_W : vidW);
+    const svgFrameH = canvasH || (portLayout ? PORT_H : vidH);
 
-    if (style === 'underline') {
-      const lineH = Math.max(2, Math.round(box.fontSize * 0.07));
-      const lineY = box.y + box.h - lineH;
-      segments.push(
-        `drawbox=x=${box.x}:y=${lineY}:w=${box.w}:h=${lineH}` +
-        `:color=${rawColor}@1.0:t=fill:${enable}`
-      );
+    // Render ALL page text in highlight color using the exact same centering as the
+    // original frame SVG (text-anchor="middle" at lineCenterX per visual line).
+    // Sharp's librsvg doesn't reliably support SVG clipPath, so instead we render
+    // the full frame once, then Sharp-crop to each word's area. The text position is
+    // guaranteed to match the original; only the crop boundary is approximate.
+    const uniqueLines = new Map(); // lineBaselineY → box (one per visual line)
+    for (let i = 0; i < n; i++) {
+      const box = wordBoxes[i];
+      if (!uniqueLines.has(box.lineBaselineY)) uniqueLines.set(box.lineBaselineY, box);
+    }
+    const textElems = [...uniqueLines.values()].map(box =>
+      `<text x="${box.lineCenterX}" y="${box.lineBaselineY}" ` +
+      `text-anchor="middle" ` +
+      `font-family="Arial, Helvetica, sans-serif" ` +
+      `font-size="${box.fontSize}" ` +
+      `font-weight="${bold ? 'bold' : 'normal'}" ` +
+      `fill="${rawColorHex}" ` +
+      `stroke="${rawColorHex}" stroke-width="1" paint-order="stroke fill">` +
+      `${safeXml(box.lineText)}</text>`
+    ).join('');
+    const fullColoredBuf = await sharp(Buffer.from(
+      `<svg width="${svgFrameW}" height="${svgFrameH}" xmlns="http://www.w3.org/2000/svg">` +
+      textElems + `</svg>`
+    )).png().toBuffer();
 
-    } else if (style === 'color') {
-      // Render each word as a transparent PNG overlay using Sharp + SVG.
-      // This completely avoids FFmpeg drawtext and all its Windows path/escaping issues.
-      // The overlay: white rect (erases original text) + word in highlight color.
-      const xmlWord = box.word
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      const svgFrameW = canvasW || (portLayout ? PORT_W : vidW);
-      const svgFrameH = canvasH || (portLayout ? PORT_H : vidH);
-      const svgBuf = Buffer.from(
-        `<svg width="${svgFrameW}" height="${svgFrameH}" xmlns="http://www.w3.org/2000/svg">` +
-        `<text x="${box.x}" y="${box.y + box.fontSize}" ` +
-        `text-anchor="start" ` +
-        `font-family="Arial, Helvetica, sans-serif" ` +
-        `font-size="${box.fontSize}" ` +
-        `font-weight="${bold ? 'bold' : 'normal'}" ` +
-        `fill="${rawColorHex}" ` +
-        `stroke="${rawColorHex}" stroke-width="1" paint-order="stroke fill">${xmlWord}</text>` +
-        `</svg>`
+    // Crop each word's bounding area in parallel.
+    // The crop PNG is placed via FFmpeg overlay x/y — no full-frame recomposite needed.
+    // callId makes filenames unique per invocation: with CONCURRENCY>1 multiple pages
+    // call buildKaraokeFilter simultaneously (std+land+port × N pages), so using only
+    // process.pid + word-index would cause different calls to collide on the same path.
+    const callId = crypto.randomBytes(4).toString('hex');
+    const renderJobs = [];
+    for (let i = 0; i < n; i++) {
+      const box = wordBoxes[i];
+      const tim = wordTimings[i];
+      const t0  = timeOffset + tim.start;
+      const t1  = timeOffset + tim.end;
+      if (t1 <= t0) continue;
+      const cropX = Math.max(0, box.x - 2);
+      const cropY = Math.max(0, box.y - 2);
+      const cropW = Math.min(svgFrameW - cropX, box.w + 4);
+      const cropH = Math.min(svgFrameH - cropY, box.h + 4);
+      const pngPath = path.join(os.tmpdir(), `sb_overlay_${callId}_${i}.png`);
+      renderJobs.push(
+        sharp(fullColoredBuf)
+          .extract({ left: cropX, top: cropY, width: cropW, height: cropH })
+          .png()
+          .toFile(pngPath)
+          .then(() => ({ pngPath, t0, t1, x: cropX, y: cropY }))
       );
-      const pngBuf  = await sharp(svgBuf).png().toBuffer();
-      const pngPath = path.join(os.tmpdir(), `sb_overlay_${Date.now()}_${i}.png`);
-      fs.writeFileSync(pngPath, pngBuf);
-      wordFiles.push(pngPath);
-      overlays.push({ pngPath, t0, t1 });
+    }
+    const results = await Promise.all(renderJobs);
+    for (const r of results) {
+      wordFiles.push(r.pngPath);
+      overlays.push(r);
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const box = wordBoxes[i];
+      const tim = wordTimings[i];
+      const t0  = timeOffset + tim.start;
+      const t1  = timeOffset + tim.end;
+      if (t1 <= t0) continue;
+      const enable = `enable='between(t,${t0.toFixed(3)},${t1.toFixed(3)})'`;
 
-    } else {
-      // Box (default / fallback)
-      segments.push(
-        `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}` +
-        `:color=${rawColor}@0.4:t=fill:${enable}`
-      );
+      if (style === 'underline') {
+        const lineH = Math.max(2, Math.round(box.fontSize * 0.07));
+        const lineY = box.y + box.h - lineH;
+        segments.push(
+          `drawbox=x=${box.x}:y=${lineY}:w=${box.w}:h=${lineH}` +
+          `:color=${rawColor}@1.0:t=fill:${enable}`
+        );
+      } else {
+        // Box (default / fallback)
+        segments.push(
+          `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}` +
+          `:color=${rawColor}@0.4:t=fill:${enable}`
+        );
+      }
     }
   }
   return { filter: segments.join(','), wordFiles, overlays };
@@ -788,7 +836,7 @@ async function buildPortraitClip(portFramePath, duration, hasTypewriter, outPath
       const ov  = overlays[idx];
       const cur = idx === overlays.length - 1 ? 'vout' : `v${idx}`;
       lines.push(
-        `[${prev}][${idx + 1}:v]overlay=enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
+        `[${prev}][${idx + 1}:v]overlay=x=${ov.x ?? 0}:y=${ov.y ?? 0}:enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
       );
       prev = cur;
     }
@@ -807,7 +855,7 @@ async function buildPortraitClip(portFramePath, duration, hasTypewriter, outPath
       '-/filter_complex', filterScript,
       '-map', '[vout]',
       '-t', String(duration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p1', '-pix_fmt', 'yuv420p',
       '-an', outPath
     );
   } finally {
@@ -845,7 +893,7 @@ async function buildLandscapeClip(landFramePath, duration, hasTypewriter, outPat
       const ov  = overlays[idx];
       const cur = idx === overlays.length - 1 ? 'vout' : `v${idx}`;
       lines.push(
-        `[${prev}][${idx + 1}:v]overlay=enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
+        `[${prev}][${idx + 1}:v]overlay=x=${ov.x ?? 0}:y=${ov.y ?? 0}:enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
       );
       prev = cur;
     }
@@ -864,7 +912,7 @@ async function buildLandscapeClip(landFramePath, duration, hasTypewriter, outPat
       '-/filter_complex', filterScript,
       '-map', '[vout]',
       '-t', String(duration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p1', '-pix_fmt', 'yuv420p',
       '-an', outPath
     );
   } finally {
@@ -887,7 +935,7 @@ async function buildLandscapeIntroSeg(framePath, introMusicPath, duration, outPa
         `afade=t=out:st=${Math.max(0, duration - 2).toFixed(3)}:d=2[aout]`,
       '-map', '[vout]', '-map', '[aout]',
       '-t', String(duration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
       outPath
     );
@@ -910,7 +958,7 @@ async function concatVideos(firstPath, secondPath, outPath) {
         '[1:a]aformat=sample_rates=44100:channel_layouts=stereo[a1];' +
         '[0:v][a0][1:v][a1]concat=n=2:v=1:a=1[vout][aout]',
       '-map', '[vout]', '-map', '[aout]',
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
       tmpOut
     );
@@ -940,7 +988,7 @@ async function concatVideosWithCrossfade(firstPath, secondPath, outPath, xfadeDu
         `[0:v][1:v]xfade=transition=fade:duration=${xfadeDur.toFixed(3)}:offset=${offset.toFixed(3)}[vout];` +
         `[a0][a1]acrossfade=d=${xfadeDur.toFixed(3)}:c1=tri:c2=tri[aout]`,
       '-map', '[vout]', '-map', '[aout]',
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '192k', '-ar', '44100', '-ac', '2',
       tmpOut
     );
@@ -988,7 +1036,7 @@ async function buildClip(imgPath, duration, hasTypewriter, outPath, highlightFil
       const ov  = overlays[idx];
       const cur = idx === overlays.length - 1 ? 'vout' : `v${idx}`;
       lines.push(
-        `[${prev}][${idx + 1}:v]overlay=enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
+        `[${prev}][${idx + 1}:v]overlay=x=${ov.x ?? 0}:y=${ov.y ?? 0}:enable='between(t,${ov.t0.toFixed(3)},${ov.t1.toFixed(3)})'[${cur}]`
       );
       prev = cur;
     }
@@ -1008,7 +1056,7 @@ async function buildClip(imgPath, duration, hasTypewriter, outPath, highlightFil
       '-/filter_complex', filterScript,
       '-map', '[vout]',
       '-t', String(duration),
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p1', '-pix_fmt', 'yuv420p',
       '-an', outPath
     );
   } finally {
@@ -1096,7 +1144,7 @@ async function buildFinalVideo(clips, musicPath, outPath) {
       ...inputs,
       '-filter_complex', vFilters.join(';'),
       '-map', '[vfinal]',
-      '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+      '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
       '-an',
       tmpVideo
     );
@@ -1198,7 +1246,7 @@ async function appendThumbnailFrame(portraitPath, thumbnailImgPath) {
       `crop=${PORT_W}:${PORT_H},setsar=1[thumb];` +
       `[v0][0:a][thumb][2:a]concat=n=2:v=1:a=1[vout][aout]`,
     '-map', '[vout]', '-map', '[aout]',
-    '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
+    '-c:v', 'h264_nvenc', '-preset', 'p4', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '192k',
     tmpPath
   );
@@ -1318,130 +1366,223 @@ async function main() {
 
   // clips[i] = { videoPath, ttsPath, duration, narrationStart }
   // narrationStart = absolute time in final video when narration begins
-  const clips         = [];
+  const clips          = [];
   const landscapeClips = [];
-  const portraitClips = [];
-  let portAbsStart = 0;
+  const portraitClips  = [];
   const landFramePaths = [];
-  const portFramePaths = [];  // temp PNG files to clean up after
+  const portFramePaths = [];
 
+  // ── Batch TTS pre-pass: load model once, synthesize all uncached pages ────────
+  const ttsBatchJobs = [];
   for (let i = 0; i < pages.length; i++) {
-    const p       = pages[i];
-    const isLast  = i === pages.length - 1;
-    const isTitle = p.number === 2;
-    const isCover = p.number === 1;
-    const imgPath = path.join(OUTPUT_PAGES_DIR, `${pad(p.number)}.png`);
-
-    if (!fs.existsSync(imgPath)) {
-      console.warn(`  Skipping page ${p.number}: image not found.`);
-      continue;
+    const p      = pages[i];
+    const isLast = i === pages.length - 1;
+    if (isLast || p.number === 2) continue;
+    const ttsFile = path.join(OUTPUT_VIDEO_DIR, `tts_${pad(p.number)}.wav`);
+    if (!fs.existsSync(ttsFile)) {
+      ttsBatchJobs.push({ text: p.text, voice: VOICE_ID, output: ttsFile });
     }
-
-    // Absolute start of this clip in the final video
-    const nPrev = clips.length;
-    const clipAbsStart = nPrev === 0
-      ? 0
-      : clips.reduce((s, c) => s + c.duration, 0) - nPrev * TRANSITION_S;
-
-    // ── Title and copyright pages: book-only, skip in video ──
-    if (isTitle) {
-      console.log(`  Page 2 (title) + copyright — skipped (book only)`);
-      continue;
+  }
+  if (ttsBatchJobs.length > 0) {
+    console.log(`Batch TTS: ${ttsBatchJobs.length} page(s) to synthesize...`);
+    const jobsFile = path.join(OUTPUT_VIDEO_DIR, '_tts_jobs.json');
+    fs.writeFileSync(jobsFile, JSON.stringify(ttsBatchJobs));
+    try {
+      await spawnAsync('py', ['-3.11', path.join(__dirname, 'tts_batch.py'), jobsFile]);
+    } finally {
+      try { fs.unlinkSync(jobsFile); } catch {}
     }
+  }
 
-    // ── Narrated pages (skip narration on last page) ──
-    const clipFile     = path.join(OUTPUT_VIDEO_DIR, `clip_${pad(p.number)}.mp4`);
-    const landClipFile = path.join(OUTPUT_VIDEO_DIR, `clip_land_${pad(p.number)}.mp4`);
-    const portClipFile = path.join(OUTPUT_VIDEO_DIR, `clip_port_${pad(p.number)}.mp4`);
-    const hasTypewriter = !isLast;
+  // ── Pre-load all TTS durations and word timings in parallel ──────────────────
+  // All .wav files now exist (batch TTS just ran). Load them concurrently so the
+  // per-page metadata pass below is instant and the main encode loop can start
+  // without any serial ffprobe/whisper calls blocking each page.
+  const ttsDataMap = new Map(); // pageNumber → { ttsDur, wordTimings, ttsFile }
+  await Promise.all(
+    pages
+      .filter((p, i) => p.number !== 2 && i !== pages.length - 1)
+      .map(async p => {
+        const ttsFile = path.join(OUTPUT_VIDEO_DIR, `tts_${pad(p.number)}.wav`);
+        if (!fs.existsSync(ttsFile)) return;
+        const [ttsDur, wordTimings] = await Promise.all([
+          getMediaDuration(ttsFile),
+          ensureWordTimings(ttsFile),
+        ]);
+        ttsDataMap.set(p.number, { ttsDur, wordTimings, ttsFile });
+      })
+  );
+  console.log(`Loaded TTS data for ${ttsDataMap.size} page(s).`);
 
-    // Build portrait frame from the original source image
-    const srcImgPath  = findSourceImage(p.number, pageImageMap);
-    const frameImgPath = srcImgPath || imgPath;
-    let landFramePath = null;
-    let portFramePath = null;
-    if (frameImgPath) {
-      const landTextColor = isCover ? LAND_TEXT_COLOR_COVER : LAND_TEXT_COLOR_STORY;
-      landFramePath = await buildLandscapeFrame(frameImgPath, p.text, { isCover, textColor: landTextColor });
-      landFramePaths.push(landFramePath);
-      const portTextColor = isCover ? PORT_TEXT_COLOR_COVER : PORT_TEXT_COLOR_STORY;
-      portFramePath = await buildPortraitFrame(frameImgPath, p.text, { isCover, textColor: portTextColor });
-      portFramePaths.push(portFramePath);
+  // ── Compute per-page metadata (durations, absolute start times) ───────────────
+  // Sequential walk to derive each page's position in the final timeline.
+  // This is fast (no I/O) so it doesn't need to be parallel.
+  const pageJobs = [];
+  {
+    let runningClipDur = 0;
+    let clipCount      = 0;
+    let portRunning    = 0;
+
+    for (let i = 0; i < pages.length; i++) {
+      const p       = pages[i];
+      const isLast  = i === pages.length - 1;
+      const isTitle = p.number === 2;
+      const isCover = p.number === 1;
+      const imgPath = path.join(OUTPUT_PAGES_DIR, `${pad(p.number)}.png`);
+
+      if (!fs.existsSync(imgPath)) {
+        console.warn(`  Skipping page ${p.number}: image not found.`);
+        continue;
+      }
+      if (isTitle) {
+        console.log(`  Page 2 (title) + copyright — skipped (book only)`);
+        continue;
+      }
+
+      const clipAbsStart = clipCount === 0 ? 0 : runningClipDur - clipCount * TRANSITION_S;
+      const srcImgPath   = findSourceImage(p.number, pageImageMap);
+      const frameImgPath = srcImgPath || imgPath;
+      const clipFile     = path.join(OUTPUT_VIDEO_DIR, `clip_${pad(p.number)}.mp4`);
+      const landClipFile = path.join(OUTPUT_VIDEO_DIR, `clip_land_${pad(p.number)}.mp4`);
+      const portClipFile = path.join(OUTPUT_VIDEO_DIR, `clip_port_${pad(p.number)}.mp4`);
+
+      if (isLast) {
+        const clipDur = STILL_SECS;
+        pageJobs.push({
+          p, isLast: true, isCover, imgPath, frameImgPath,
+          clipAbsStart, clipDur, clipFile, landClipFile, portClipFile,
+          portPause: 0, portClipDur: clipDur, portNarStart: null, narrationStart: null,
+          wordTimings: null, ttsFile: null, ttsDur: null,
+        });
+        runningClipDur += clipDur;
+        portRunning += clipDur - TRANSITION_S;
+        clipCount++;
+        continue;
+      }
+
+      const ttsData = ttsDataMap.get(p.number);
+      if (!ttsData) {
+        console.warn(`  Page ${p.number}: missing TTS data, skipping.`);
+        continue;
+      }
+      const { ttsDur, wordTimings, ttsFile } = ttsData;
+      const clipDur        = TRANSITION_S + ttsDur + PAGE_PAUSE;
+      const narrationStart = clipAbsStart + TRANSITION_S;
+      const portPause      = p.number === 1 ? PORT_PRE_PAUSE : 0;
+      const portClipDur    = clipDur + portPause;
+      const portNarStart   = portRunning + TRANSITION_S + portPause;
+
+      pageJobs.push({
+        p, isLast: false, isCover, imgPath, frameImgPath,
+        clipAbsStart, clipDur, clipFile, landClipFile, portClipFile,
+        portPause, portClipDur, portNarStart, narrationStart,
+        wordTimings, ttsFile, ttsDur,
+      });
+
+      runningClipDur += clipDur;
+      portRunning += portClipDur - TRANSITION_S;
+      clipCount++;
     }
+  }
 
-    const landLayout = {
-      x: LAND_TXT_X, y: LAND_TXT_Y, w: LAND_TXT_W, h: LAND_TXT_H,
-    };
-    const portLayout = {
-      x: PORT_TXT_X, y: PORT_TXT_Y, w: PORT_TXT_W, h: PORT_TXT_H,
-    };
+  // ── Process pages in parallel with a concurrency limit ───────────────────────
+  // CONCURRENCY = 2 runs two pages at once. Each page spawns up to 3 NVENC
+  // sessions (std + landscape + portrait), so this yields 6 simultaneous
+  // encodes — well within what a modern NVENC-capable GPU can handle.
+  const CONCURRENCY = 2;
+  const pageResults = new Array(pageJobs.length).fill(null);
+
+  const processPage = async (job, jobIdx) => {
+    const {
+      p, isLast, isCover, imgPath, frameImgPath,
+      clipDur, portClipDur, clipFile, landClipFile, portClipFile,
+      portPause, portNarStart, narrationStart, wordTimings, ttsFile, ttsDur,
+    } = job;
+
+    const landTextColor = isCover ? LAND_TEXT_COLOR_COVER : LAND_TEXT_COLOR_STORY;
+    const portTextColor = isCover ? PORT_TEXT_COLOR_COVER : PORT_TEXT_COLOR_STORY;
+    const [landFramePath, portFramePath] = await Promise.all([
+      buildLandscapeFrame(frameImgPath, p.text, { isCover, textColor: landTextColor }),
+      buildPortraitFrame(frameImgPath, p.text, { isCover, textColor: portTextColor }),
+    ]);
+    landFramePaths.push(landFramePath);
+    portFramePaths.push(portFramePath);
 
     if (isLast) {
-      const clipDur = STILL_SECS;
-      await buildClip(imgPath, clipDur, false, clipFile);
-      clips.push({ videoPath: clipFile, ttsPath: null, duration: clipDur, narrationStart: null });
-      if (landFramePath) {
-        await buildLandscapeClip(landFramePath, clipDur, false, landClipFile);
-        landscapeClips.push({ videoPath: landClipFile, ttsPath: null, duration: clipDur, narrationStart: null });
-      }
-      if (portFramePath) {
-        await buildPortraitClip(portFramePath, clipDur, false, portClipFile);
-        portraitClips.push({ videoPath: portClipFile, ttsPath: null, duration: clipDur, narrationStart: null });
-      }
+      await Promise.all([
+        buildClip(imgPath, clipDur, false, clipFile),
+        buildLandscapeClip(landFramePath, clipDur, false, landClipFile),
+        buildPortraitClip(portFramePath, clipDur, false, portClipFile),
+      ]);
       console.log(`  Page ${String(p.number).padStart(2)} (last)  — still ${clipDur}s, no narration`);
-      continue;
+      pageResults[jobIdx] = {
+        std:  { videoPath: clipFile,     ttsPath: null, duration: clipDur, narrationStart: null },
+        land: { videoPath: landClipFile, ttsPath: null, duration: clipDur, narrationStart: null },
+        port: { videoPath: portClipFile, ttsPath: null, duration: clipDur, narrationStart: null },
+      };
+      return;
     }
 
-    const ttsFile = path.join(OUTPUT_VIDEO_DIR, `tts_${pad(p.number)}.wav`);
-    process.stdout.write(`  Page ${String(p.number).padStart(2)} — TTS... `);
-    await generateTTS(p.text, ttsFile);
-    const ttsDur  = await getMediaDuration(ttsFile);
+    const SCALE_V    = vidW / 2550;
+    const landLayout = { x: LAND_TXT_X, y: LAND_TXT_Y, w: LAND_TXT_W, h: LAND_TXT_H };
+    const portLayout = { x: PORT_TXT_X, y: PORT_TXT_Y, w: PORT_TXT_W, h: PORT_TXT_H };
 
-    const clipDur = TRANSITION_S + ttsDur + PAGE_PAUSE;
-    const narrationStart = clipAbsStart + TRANSITION_S;
+    const [stdKaraoke, landKaraoke, portKaraoke] = await Promise.all([
+      buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
+        bold:          isCover,
+        startFontSize: Math.round((isCover ? FONT_COVER : FONT_STORY) * SCALE_V),
+      }),
+      buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
+        bold:          isCover,
+        startFontSize: isCover ? LAND_FONT_COVER : LAND_FONT_STORY,
+        portLayout:    landLayout,
+        canvasW:       LAND_W,
+        canvasH:       LAND_H,
+      }),
+      buildKaraokeFilter(p.text, wordTimings, TRANSITION_S + portPause, {
+        bold:          isCover,
+        startFontSize: isCover ? PORT_FONT_COVER : PORT_FONT_STORY,
+        portLayout,
+        canvasW:       PORT_W,
+        canvasH:       PORT_H,
+      }),
+    ]);
 
-    console.log(`narration starts at ${narrationStart.toFixed(2)}s (${ttsDur.toFixed(1)}s long)`);
+    await Promise.all([
+      buildClip(imgPath, clipDur, true, clipFile,
+        stdKaraoke.filter, stdKaraoke.wordFiles, stdKaraoke.overlays),
+      buildLandscapeClip(landFramePath, clipDur, true, landClipFile,
+        landKaraoke.filter, landKaraoke.wordFiles, landKaraoke.overlays),
+      buildPortraitClip(portFramePath, portClipDur, true, portClipFile,
+        portKaraoke.filter, portKaraoke.wordFiles, portKaraoke.overlays),
+    ]);
 
-    const wordTimings = await ensureWordTimings(ttsFile);
-    const SCALE_V     = vidW / 2550;
-    const { filter: highlightFilter, wordFiles, overlays } = await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
-      bold:          isCover,
-      startFontSize: Math.round((isCover ? FONT_COVER : FONT_STORY) * SCALE_V),
-    });
-    await buildClip(imgPath, clipDur, hasTypewriter, clipFile, highlightFilter, wordFiles, overlays);
-    clips.push({ videoPath: clipFile, ttsPath: ttsFile, duration: clipDur, narrationStart });
+    console.log(`  Page ${String(p.number).padStart(2)} — narration at ${narrationStart.toFixed(2)}s (${ttsDur.toFixed(1)}s)`);
+    pageResults[jobIdx] = {
+      std:  { videoPath: clipFile,     ttsPath: ttsFile, duration: clipDur,     narrationStart },
+      land: { videoPath: landClipFile, ttsPath: ttsFile, duration: clipDur,     narrationStart },
+      port: { videoPath: portClipFile, ttsPath: ttsFile, duration: portClipDur, narrationStart: portNarStart },
+    };
+  };
 
-    if (landFramePath) {
-      const landStartFont = isCover ? LAND_FONT_COVER : LAND_FONT_STORY;
-      const { filter: landHighlightFilter, wordFiles: landWordFiles, overlays: landOverlays } =
-        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S, {
-          bold:          isCover,
-          startFontSize: landStartFont,
-          portLayout:    landLayout,
-          canvasW:       LAND_W,
-          canvasH:       LAND_H,
-        });
-      await buildLandscapeClip(landFramePath, clipDur, hasTypewriter, landClipFile, landHighlightFilter, landWordFiles, landOverlays);
-      landscapeClips.push({ videoPath: landClipFile, ttsPath: ttsFile, duration: clipDur, narrationStart });
-    }
+  // Worker pool: CONCURRENCY goroutines pull jobs from a shared index
+  {
+    let nextIdx = 0;
+    const worker = async () => {
+      while (nextIdx < pageJobs.length) {
+        const i = nextIdx++;
+        await processPage(pageJobs[i], i);
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+  }
 
-    if (portFramePath) {
-      const portPause = p.number === 1 ? PORT_PRE_PAUSE : 0;
-      const portClipDur = clipDur + portPause;
-      const portNarStart = portAbsStart + TRANSITION_S + portPause;
-      const portStartFont = isCover ? PORT_FONT_COVER : PORT_FONT_STORY;
-      const { filter: portHighlightFilter, wordFiles: portWordFiles, overlays: portOverlays } =
-        await buildKaraokeFilter(p.text, wordTimings, TRANSITION_S + portPause, {
-          bold:          isCover,
-          startFontSize: portStartFont,
-          portLayout,
-          canvasW:       PORT_W,
-          canvasH:       PORT_H,
-        });
-      await buildPortraitClip(portFramePath, portClipDur, hasTypewriter, portClipFile, portHighlightFilter, portWordFiles, portOverlays);
-      portraitClips.push({ videoPath: portClipFile, ttsPath: ttsFile, duration: portClipDur, narrationStart: portNarStart });
-      portAbsStart += portClipDur - TRANSITION_S;
-    }
+  // Collect results in page order for final assembly
+  for (const result of pageResults) {
+    if (!result) continue;
+    clips.push(result.std);
+    landscapeClips.push(result.land);
+    portraitClips.push(result.port);
   }
 
   if (!clips.length) throw new Error('No clips built.');

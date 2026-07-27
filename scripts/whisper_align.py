@@ -17,7 +17,7 @@ wav_path    = sys.argv[1]
 json_path   = sys.argv[2]
 lyrics_text = sys.argv[3] if len(sys.argv) > 3 else None
 
-model = stable_whisper.load_faster_whisper('base')
+model = stable_whisper.load_faster_whisper('base', device='cuda', compute_type='float16')
 
 if lyrics_text:
     result = model.align(wav_path, lyrics_text, language='en')

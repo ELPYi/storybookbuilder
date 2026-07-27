@@ -41,7 +41,7 @@ if not text:
         json.dump([], f)
     sys.exit(0)
 
-pipeline = KPipeline(lang_code='a', trf=False)  # trf=False reduces memory usage
+pipeline = KPipeline(lang_code='a', trf=True, device='cuda')
 
 chunks = []
 for gs, _, audio in pipeline(text, voice=voice, speed=0.75):
@@ -65,7 +65,7 @@ sf.write(output_path, audio, SAMPLE_RATE)
 # ── Word-level alignment via faster-whisper ─────────────────────────────────────
 from faster_whisper import WhisperModel
 
-model = WhisperModel('base', device='cpu', compute_type='int8')
+model = WhisperModel('base', device='cuda', compute_type='float16')
 segments, _ = model.transcribe(output_path, word_timestamps=True, language='en')
 
 word_timings = []
